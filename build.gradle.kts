@@ -23,6 +23,8 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.test {
+    layout.buildDirectory.dir("cfgraphs").get().asFile.mkdirs()
+
     for (dir in sourceSets.test.get().java.srcDirs.map { it.resolve("testcases") }.filter { it.exists() }) {
         inputs.files(dir)
     }
@@ -55,6 +57,7 @@ tasks.test {
 sourceSets {
     main {
         resources {
+            srcDirs("src/main/kotlin")
             srcDirs("src/main/java")
         }
     }
