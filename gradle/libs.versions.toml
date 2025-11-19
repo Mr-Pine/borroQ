@@ -1,5 +1,6 @@
 [versions]
 kotlin = "2.2.20"
+dokka = "2.1.0"
 eisop = "3.49.3-eisop1"
 
 [libraries]

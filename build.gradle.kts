@@ -1,6 +1,7 @@
 plugins {
     java
     kotlin("jvm") version libs.versions.kotlin
+    id("org.jetbrains.dokka") version libs.versions.dokka
 }
 
 group = "de.mr-pine"
