@@ -1,0 +1,12 @@
+[versions]
+kotlin = "2.2.20"
+eisop = "3.49.3-eisop1"
+
+[libraries]
+checker = { group = "io.github.eisop", name = "checker", version.ref = "eisop" }
+checker-qual = { group = "io.github.eisop", name = "checker-qual", version.ref = "eisop" }
+
+eisop-test = { group = "io.github.eisop", name = "framework-test", version.ref = "eisop" }
+
+[bundles]
+checker = ["checker", "checker-qual"]

@@ -1,0 +1,9 @@
+package java.util;
+import de.mr_pine.optionaldemo.qual.*;
+public class Optional {
+@Present Optional<T> of(T value);
+@MaybePresent Optional<T> ofNullable(T value);
+@MaybePresent Optional<T> empty();
+
+T get(@Present Optional<T> this);
+}
