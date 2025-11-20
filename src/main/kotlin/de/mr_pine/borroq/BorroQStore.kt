@@ -6,16 +6,11 @@ import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
 
-class BorroQStore: Store<BorroQStore> {
+class BorroQStore private constructor(val variablePermissions: MutableMap<LocalVariable, IdentifiedPermission>, val thisPermission: IdentifiedPermission, val borrowList: MutableList<Unit>): Store<BorroQStore> {
 
-    val variablePermissions: MutableMap<LocalVariable, IdentifiedPermission> = mutableMapOf()
-    val thisPermission: IdentifiedPermission = TODO()
+    constructor(): this(mutableMapOf(), TODO(), TODO())
 
-    val borrowList: MutableList<Unit> = TODO()
-
-    override fun copy(): BorroQStore {
-        TODO("Not yet implemented")
-    }
+    override fun copy() = BorroQStore(variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
 
     override fun leastUpperBound(other: BorroQStore?): BorroQStore {
         TODO("Not yet implemented")
@@ -29,7 +24,7 @@ class BorroQStore: Store<BorroQStore> {
         a: JavaExpression?,
         b: JavaExpression?
     ): Boolean {
-        TODO("Not yet implemented")
+        return true
     }
 
     override fun visualize(viz: CFGVisualizer<*, BorroQStore, *>?): String {
