@@ -1,6 +1,8 @@
 package de.mr_pine.borroq.types
 
-sealed interface VariablePermission {
+import de.mr_pine.borroq.types.PermissionValue
+
+sealed interface VariablePermission: PermissionValue {
     object Top : VariablePermission {
         override fun toString() = "⊤"
     }

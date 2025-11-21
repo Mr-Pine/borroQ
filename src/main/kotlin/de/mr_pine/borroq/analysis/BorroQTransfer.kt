@@ -3,34 +3,37 @@ package de.mr_pine.borroq.analysis
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
+import de.mr_pine.borroq.types.*
 import org.checkerframework.dataflow.analysis.ForwardTransferFunction
 import org.checkerframework.dataflow.analysis.RegularTransferResult
 import org.checkerframework.dataflow.analysis.TransferInput
 import org.checkerframework.dataflow.analysis.TransferResult
 import org.checkerframework.dataflow.cfg.UnderlyingAST
-import org.checkerframework.dataflow.cfg.node.AbstractNodeVisitor
-import org.checkerframework.dataflow.cfg.node.LocalVariableNode
-import org.checkerframework.dataflow.cfg.node.MethodInvocationNode
-import org.checkerframework.dataflow.cfg.node.Node
+import org.checkerframework.dataflow.cfg.node.*
 
-class BorroQTransfer(val checker: BorroQChecker, val strictness: Strictness) :
-    AbstractNodeVisitor<TransferResult<MethodAnalysis.AbstractValue, BorroQStore>, TransferInput<MethodAnalysis.AbstractValue, BorroQStore>>(),
-    ForwardTransferFunction<MethodAnalysis.AbstractValue, BorroQStore> {
+private typealias Result = TransferResult<PermissionValue, BorroQStore>
+private typealias Input = TransferInput<PermissionValue, BorroQStore>
+
+class BorroQTransfer(val checker: BorroQChecker, val strictness: Strictness) : AbstractNodeVisitor<Result, Input>(),
+    ForwardTransferFunction<PermissionValue, BorroQStore> {
     override fun initialStore(
-        underlyingAST: UnderlyingAST?,
-        parameters: List<LocalVariableNode?>?
+        underlyingAST: UnderlyingAST?, parameters: List<LocalVariableNode?>?
     ): BorroQStore {
         return BorroQStore()
     }
 
+    fun doNothing(
+        node: Node, input: Input
+    ): Result = RegularTransferResult(null, input.regularStore)
+
     override fun visitNode(
-        node: Node?,
-        p: TransferInput<MethodAnalysis.AbstractValue, BorroQStore>?
-    ): TransferResult<MethodAnalysis.AbstractValue, BorroQStore> {
-        val source = node!!.tree
+        node: Node, p: Input
+    ): Result {
+        val source = node.tree
         if (node is MethodInvocationNode) {
             println("Hi")
         }
+
         if (source == null) {
             System.err.println("Tree of node $node is null")
         } else {
@@ -41,6 +44,95 @@ class BorroQTransfer(val checker: BorroQChecker, val strictness: Strictness) :
             }
         }
 
-        return RegularTransferResult(null, p!!.regularStore)
+        return RegularTransferResult(null, p.regularStore)
     }
+
+    override fun visitAssignment(
+        node: AssignmentNode, input: Input
+    ): Result {
+        if (node.target !is LocalVariableNode) {
+            return visitNode(node, input)
+        }
+
+        fun result(value: PermissionValue, storeUpdate: BorroQStore.() -> Unit): Result {
+            return if (node.isSynthetic && input.containsTwoStores()) {
+                // This is a synthetic assignment node created for a ternary expression. In this case
+                // the `then` and `else` store are not merged.
+                val thenStore = input.getThenStore()!!
+                val elseStore = input.getElseStore()!!
+                visitNode(node, input)/*processCommonAssignment(`in`, lhs, rhs, thenStore, rhsValue)
+                processCommonAssignment(`in`, lhs, rhs, elseStore, rhsValue)
+                return ConditionalTransferResult<V?, S?>(
+                    finishValue(rhsValue, thenStore, elseStore), thenStore, elseStore
+                )*/
+            } else {
+                val store = input.getRegularStore()
+                store.storeUpdate()
+                RegularTransferResult(value, store, true)
+            }
+        }
+
+        val targetAnnotation = null // TODO: Parse this
+
+        return when (val rhsPermission = input.getValueOfSubNode(node.expression)!!) {
+            is PermissionValue.FreePermission -> {
+                val targetPermission = rhsPermission.permission.withId(Id.fromNode(node.target))
+                result(targetPermission) { updatePermission(node.target, targetPermission) }
+            }
+
+            is IdentifiedPermission -> {
+                require(node.expression is LocalVariableNode) { "Can only split permissions from variables" }
+                val (targetPermission, remainingPermission) = rhsPermission.split()
+                result(targetPermission) {
+                    updatePermission(node.target, targetPermission)
+                    updatePermission(node.expression, remainingPermission)
+                }
+            }
+
+            else -> TODO()
+        }
+
+    }
+
+    override fun visitLocalVariable(
+        node: LocalVariableNode, input: Input
+    ): Result {
+        require(!input.containsTwoStores()) { "Local variable node $node is in two stores" }
+        val permission = input.regularStore.queryPermission(node)
+        return RegularTransferResult(permission, input.regularStore)
+    }
+
+    override fun visitObjectCreation(
+        n: ObjectCreationNode, p: Input
+    ): Result {
+        return RegularTransferResult(
+            Permission(Permission.Rational.ONE).asValue(), p.regularStore
+        )
+    }
+
+    //region Noop visit functions
+    override fun visitExpressionStatement(
+        n: ExpressionStatementNode, p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitMethodAccess(
+        n: MethodAccessNode, p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitThis(
+        n: ThisNode, p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitClassName(
+        n: ClassNameNode, p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+    //endregion
 }

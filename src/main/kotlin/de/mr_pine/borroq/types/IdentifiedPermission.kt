@@ -1,8 +1,18 @@
 package de.mr_pine.borroq.types
 
-class IdentifiedPermission(rational: Rational, val id: Id) : Permission(rational), VariablePermission {
-    @JvmInline
-    value class Id(val name: String)
+class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction), VariablePermission {
+
+    override fun split(): Pair<IdentifiedPermission, IdentifiedPermission> {
+        val (a, b) = super.split()
+        return a.withId(id) to b.withId(id)
+    }
+
+    fun combineFractional(other: IdentifiedPermission) =
+        if (id != other.id) {
+            VariablePermission.Top
+        } else {
+            IdentifiedPermission(Rational.max(this.fraction, other.fraction), id)
+        }
 
     override fun toString(): String {
         val perm = super.toString()
@@ -19,11 +29,7 @@ class IdentifiedPermission(rational: Rational, val id: Id) : Permission(rational
         result = 31 * result + id.hashCode()
         return result
     }
-
-    fun combineFractional(other: IdentifiedPermission) =
-        if (id != other.id) {
-            VariablePermission.Top
-        } else {
-            IdentifiedPermission(Rational.max(this.fraction, other.fraction), id)
-        }
 }
+
+fun Permission.withId(id: Id) = IdentifiedPermission(this.fraction, id)
+

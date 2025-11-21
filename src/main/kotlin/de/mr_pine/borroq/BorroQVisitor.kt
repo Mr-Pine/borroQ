@@ -5,6 +5,7 @@ import com.sun.source.tree.MethodTree
 import de.mr_pine.borroq.analysis.BorroQStore
 import de.mr_pine.borroq.analysis.BorroQTransfer
 import de.mr_pine.borroq.analysis.MethodAnalysis
+import de.mr_pine.borroq.types.PermissionValue
 import org.checkerframework.dataflow.cfg.ControlFlowGraph
 import org.checkerframework.dataflow.cfg.builder.CFGBuilder
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
@@ -41,7 +42,7 @@ class BorroQVisitor(
         cfgVisualizer?.visualizeWithAction(cfg, cfg.entryBlock, analysis)
     }
 
-    fun createCFGVisualizer(): CFGVisualizer<MethodAnalysis.AbstractValue, BorroQStore, BorroQTransfer>? {
+    fun createCFGVisualizer(): CFGVisualizer<PermissionValue, BorroQStore, BorroQTransfer>? {
         if (checker.hasOption("flowdotdir")) {
             val flowdotdir = checker.getOption("flowdotdir")
             if (flowdotdir!!.isEmpty()) {
@@ -54,7 +55,7 @@ class BorroQVisitor(
             args.put("verbose", verbose)
             args.put("checkerName", checker::class.simpleName)
 
-            val res = DOTCFGVisualizer<MethodAnalysis.AbstractValue, BorroQStore, BorroQTransfer>()
+            val res = DOTCFGVisualizer<PermissionValue, BorroQStore, BorroQTransfer>()
             res.init(args)
             return res
         } else if (checker.hasOption("cfgviz")) {

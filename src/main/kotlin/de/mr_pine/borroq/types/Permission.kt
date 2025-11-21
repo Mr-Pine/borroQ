@@ -1,6 +1,6 @@
 package de.mr_pine.borroq.types
 
-sealed class Permission(val fraction: Rational) {
+open class Permission(val fraction: Rational) {
     data class Rational(val numerator: Int, val denominator: Int) : Comparable<Rational> {
         override fun toString() = "$numerator/$denominator"
 
@@ -9,10 +9,16 @@ sealed class Permission(val fraction: Rational) {
             denominator * other.denominator
         ).reduced()
 
-        operator fun minus(other: Rational) = Rational(
-            numerator * other.denominator - other.numerator * denominator,
-            denominator * other.denominator
-        ).reduced()
+        operator fun minus(other: Rational) = this + (-other)
+        operator fun unaryMinus() = Rational(-numerator, denominator)
+
+        fun inverse() = Rational(denominator, numerator)
+
+        operator fun times(other: Rational) = Rational(numerator * other.numerator, denominator * other.denominator)
+
+        operator fun div(other: Rational) = this * other.inverse()
+        operator fun div(other: Int) = this / other.asRational()
+
 
         fun reduced(): Rational {
             fun calculateGCD(a: Int, b: Int): Int {
@@ -34,11 +40,18 @@ sealed class Permission(val fraction: Rational) {
         override fun compareTo(other: Rational) = (this - other).numerator
 
         companion object {
-            val ONE = Rational(1, 1)
-            val ZERO = Rational(0, 1)
+            fun Int.asRational() = Rational(this, 1)
+
+            val ONE = 1.asRational()
+            val ZERO = 0.asRational()
 
             fun max(a: Rational, b: Rational) = if (a > b) a else b
         }
+    }
+
+    open fun split(): Pair<Permission, Permission> {
+        val splitFraction = this.fraction / 2
+        return Permission(splitFraction) to Permission(splitFraction)
     }
 
     override fun toString() = "[$fraction]"
