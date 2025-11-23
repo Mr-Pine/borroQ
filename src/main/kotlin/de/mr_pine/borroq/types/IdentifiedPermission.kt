@@ -2,8 +2,8 @@ package de.mr_pine.borroq.types
 
 class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction), VariablePermission {
 
-    override fun split(): Pair<IdentifiedPermission, IdentifiedPermission> {
-        val (a, b) = super.split()
+    override fun split(hint: Mutability?): Pair<IdentifiedPermission, IdentifiedPermission> {
+        val (a, b) = super.split(hint)
         return a.withId(id) to b.withId(id)
     }
 

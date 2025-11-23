@@ -1,5 +1,7 @@
 package de.mr_pine.borroq.types
 
+import de.mr_pine.borroq.types.Permission.Rational.Companion.minus
+
 open class Permission(val fraction: Rational) {
     data class Rational(val numerator: Int, val denominator: Int) : Comparable<Rational> {
         override fun toString() = "$numerator/$denominator"
@@ -41,6 +43,7 @@ open class Permission(val fraction: Rational) {
 
         companion object {
             fun Int.asRational() = Rational(this, 1)
+            operator fun Int.minus(other: Rational) = this.asRational() - other
 
             val ONE = 1.asRational()
             val ZERO = 0.asRational()
@@ -49,9 +52,12 @@ open class Permission(val fraction: Rational) {
         }
     }
 
-    open fun split(): Pair<Permission, Permission> {
-        val splitFraction = this.fraction / 2
-        return Permission(splitFraction) to Permission(splitFraction)
+    open fun split(hint: Mutability?): Pair<Permission, Permission> {
+        val splitFraction = when (hint ?: Mutability.splitDefault) {
+            Mutability.IMMUTABLE -> this.fraction / 2
+            Mutability.MUTABLE -> this.fraction
+        }
+        return Permission(splitFraction) to Permission(1 - splitFraction)
     }
 
     override fun toString() = "[$fraction]"

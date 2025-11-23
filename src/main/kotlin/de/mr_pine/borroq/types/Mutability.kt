@@ -1,0 +1,27 @@
+package de.mr_pine.borroq.types
+
+import de.mr_pine.borroq.qual.Immutable
+import de.mr_pine.borroq.qual.Mutable
+import org.checkerframework.javacutil.AnnotationUtils
+import javax.lang.model.element.AnnotationMirror
+
+enum class Mutability {
+    MUTABLE, IMMUTABLE, ;
+
+    companion object {
+        fun fromAnnotation(annotations: Collection<AnnotationMirror>): Mutability? {
+            val mutableAnnotation = AnnotationUtils.getAnnotationByClass(annotations, Mutable::class.java)
+            val immutableAnnotation = AnnotationUtils.getAnnotationByClass(annotations, Immutable::class.java)
+
+            if (mutableAnnotation != null && immutableAnnotation != null) {
+                throw IllegalStateException("Element is annotated with both @Mutable and @Immutable")
+            }
+
+            return if (mutableAnnotation != null) MUTABLE
+            else if (immutableAnnotation != null) IMMUTABLE
+            else null
+        }
+
+        val splitDefault = IMMUTABLE
+    }
+}

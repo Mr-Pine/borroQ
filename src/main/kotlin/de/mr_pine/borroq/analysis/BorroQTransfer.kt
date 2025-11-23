@@ -14,7 +14,8 @@ import org.checkerframework.dataflow.cfg.node.*
 private typealias Result = TransferResult<PermissionValue, BorroQStore>
 private typealias Input = TransferInput<PermissionValue, BorroQStore>
 
-class BorroQTransfer(val checker: BorroQChecker, val strictness: Strictness) : AbstractNodeVisitor<Result, Input>(),
+class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: AnnotationQuery, val strictness: Strictness) :
+    AbstractNodeVisitor<Result, Input>(),
     ForwardTransferFunction<PermissionValue, BorroQStore> {
     override fun initialStore(
         underlyingAST: UnderlyingAST?, parameters: List<LocalVariableNode?>?
@@ -72,7 +73,7 @@ class BorroQTransfer(val checker: BorroQChecker, val strictness: Strictness) : A
             }
         }
 
-        val targetAnnotation = null // TODO: Parse this
+        val targetAnnotation = node.target.tree?.let { annotationQuery.getAssignmentLeftSideAnnotations(it)?.let(Mutability::fromAnnotation) }
 
         return when (val rhsPermission = input.getValueOfSubNode(node.expression)!!) {
             is PermissionValue.FreePermission -> {
@@ -82,7 +83,7 @@ class BorroQTransfer(val checker: BorroQChecker, val strictness: Strictness) : A
 
             is IdentifiedPermission -> {
                 require(node.expression is LocalVariableNode) { "Can only split permissions from variables" }
-                val (targetPermission, remainingPermission) = rhsPermission.split()
+                val (targetPermission, remainingPermission) = rhsPermission.split(targetAnnotation)
                 result(targetPermission) {
                     updatePermission(node.target, targetPermission)
                     updatePermission(node.expression, remainingPermission)

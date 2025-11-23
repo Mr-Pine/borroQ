@@ -2,6 +2,7 @@ package de.mr_pine.borroq
 
 import com.sun.source.tree.ClassTree
 import com.sun.source.tree.MethodTree
+import de.mr_pine.borroq.analysis.AnnotationQuery
 import de.mr_pine.borroq.analysis.BorroQStore
 import de.mr_pine.borroq.analysis.BorroQTransfer
 import de.mr_pine.borroq.analysis.MethodAnalysis
@@ -14,7 +15,9 @@ import org.checkerframework.framework.source.SourceVisitor
 import org.checkerframework.javacutil.UserError
 
 class BorroQVisitor(
-    val checker: BorroQChecker, val strictness: Strictness, val typeQuery: TypeQuery = TypeQuery(checker)
+    val checker: BorroQChecker, val strictness: Strictness, val annotationQuery: AnnotationQuery = AnnotationQuery(
+        checker
+    )
 ) : SourceVisitor<Unit, Unit>(checker) {
 
     var currentClass: ClassTree? = null
@@ -32,7 +35,7 @@ class BorroQVisitor(
             currentClass ?: throw IllegalStateException("No current class available"),
             checker.processingEnvironment
         )
-        val analysis = MethodAnalysis(-1, BorroQTransfer(checker, strictness))
+        val analysis = MethodAnalysis(-1, BorroQTransfer(checker, annotationQuery, strictness))
         analysis.performAnalysis(cfg)
 
         visualizeCFG(cfg, analysis)
