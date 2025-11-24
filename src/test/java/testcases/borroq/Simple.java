@@ -1,12 +1,12 @@
 package testcases.borroq;
 
-import de.mr_pine.borroq.Rational;
 import de.mr_pine.borroq.qual.Immutable;
 import de.mr_pine.borroq.qual.Mutable;
-import de.mr_pine.borroq.qual.Permission;
 
 public class Simple {
-    void use(Object o) {}
+    @Immutable String use(@Immutable Object o) {
+        return "Hi";
+    }
 
     void valid() {
         @Mutable Object obj = new Object();

@@ -9,7 +9,7 @@ enum class Mutability {
     MUTABLE, IMMUTABLE, ;
 
     companion object {
-        fun fromAnnotation(annotations: Collection<AnnotationMirror>): Mutability? {
+        fun fromAnnotations(annotations: Collection<AnnotationMirror>): Mutability? {
             val mutableAnnotation = AnnotationUtils.getAnnotationByClass(annotations, Mutable::class.java)
             val immutableAnnotation = AnnotationUtils.getAnnotationByClass(annotations, Immutable::class.java)
 
@@ -22,6 +22,11 @@ enum class Mutability {
             else null
         }
 
-        val splitDefault = IMMUTABLE
+        object Defaults {
+            val split = IMMUTABLE
+            val returnType = IMMUTABLE
+            val parameter = IMMUTABLE
+        }
+
     }
 }

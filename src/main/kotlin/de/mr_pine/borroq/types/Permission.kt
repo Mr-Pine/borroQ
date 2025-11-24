@@ -53,7 +53,7 @@ open class Permission(val fraction: Rational) {
     }
 
     open fun split(hint: Mutability?): Pair<Permission, Permission> {
-        val splitFraction = when (hint ?: Mutability.splitDefault) {
+        val splitFraction = when (hint ?: Mutability.Companion.Defaults.split) {
             Mutability.IMMUTABLE -> this.fraction / 2
             Mutability.MUTABLE -> this.fraction
         }

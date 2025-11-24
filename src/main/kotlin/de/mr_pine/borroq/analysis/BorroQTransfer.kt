@@ -10,6 +10,7 @@ import org.checkerframework.dataflow.analysis.TransferInput
 import org.checkerframework.dataflow.analysis.TransferResult
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
+import org.checkerframework.javacutil.ElementUtils
 
 private typealias Result = TransferResult<PermissionValue, BorroQStore>
 private typealias Input = TransferInput<PermissionValue, BorroQStore>
@@ -32,7 +33,7 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
     ): Result {
         val source = node.tree
         if (node is MethodInvocationNode) {
-            println("Hi")
+            println("Hi from call to ${ElementUtils.getQualifiedName(node.target.method)}")
         }
 
         if (source == null) {
@@ -46,6 +47,17 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
         }
 
         return RegularTransferResult(null, p.regularStore)
+    }
+
+    override fun visitMethodInvocation(
+        node: MethodInvocationNode,
+        input: Input
+    ): Result {
+        if (node.target.method.simpleName.toString() != "<init>") {
+            val methodType = MethodPermissionAnalysis(annotationQuery).getType(node.target.method)
+            println(methodType)
+        }
+        return super.visitMethodInvocation(node, input)
     }
 
     override fun visitAssignment(
@@ -73,7 +85,9 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
             }
         }
 
-        val targetAnnotation = node.target.tree?.let { annotationQuery.getAssignmentLeftSideAnnotations(it)?.let(Mutability::fromAnnotation) }
+        val targetAnnotation = node.target.tree?.let {
+            annotationQuery.getAssignmentLeftSideAnnotations(it)?.let(Mutability::fromAnnotations)
+        }
 
         return when (val rhsPermission = input.getValueOfSubNode(node.expression)!!) {
             is PermissionValue.FreePermission -> {
