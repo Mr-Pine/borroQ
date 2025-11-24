@@ -53,10 +53,7 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
         node: MethodInvocationNode,
         input: Input
     ): Result {
-        if (node.target.method.simpleName.toString() != "<init>") {
-            val methodType = MethodPermissionAnalysis(annotationQuery).getType(node.target.method)
-            println(methodType)
-        }
+        val methodType = SignatureTypeAnalysis(annotationQuery).getType(node.target.method)
         return super.visitMethodInvocation(node, input)
     }
 

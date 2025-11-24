@@ -1,7 +1,7 @@
 package de.mr_pine.borroq.types
 
-import de.mr_pine.borroq.qual.Immutable
-import de.mr_pine.borroq.qual.Mutable
+import de.mr_pine.borroq.qual.mutability.Immutable
+import de.mr_pine.borroq.qual.mutability.Mutable
 import org.checkerframework.javacutil.AnnotationUtils
 import javax.lang.model.element.AnnotationMirror
 
