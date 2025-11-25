@@ -56,7 +56,8 @@ tasks.test {
         "--add-exports", "jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
         "--add-exports", "jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
         // Required because the Checker Framework reflectively accesses private members in com.sun.tools.javac.comp.
-        "--add-opens", "jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED"
+        "--add-opens", "jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED",
+        "-Dtests.outputDir=${layout.buildDirectory.dir("testclasses").get().asFile.path}"
     )
     jvmArgs(compilerArgsForRunningCF)
     testLogging {

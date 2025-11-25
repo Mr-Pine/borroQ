@@ -1,3 +1,4 @@
+
 import de.mr_pine.borroq.BorroQChecker
 import org.checkerframework.framework.test.CheckerFrameworkPerFileTest
 import org.checkerframework.framework.test.TestRootDirectory
@@ -19,6 +20,6 @@ class BorroQTest(testFile: File?) : CheckerFrameworkPerFileTest(
         @JvmStatic
         @get:Parameterized.Parameters
         val testDirs: Array<String?>
-            get() = arrayOf<String?>("borroq")
+            get() = arrayOf("borroq")
     }
 }
