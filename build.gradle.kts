@@ -18,6 +18,12 @@ dependencies {
     testImplementation(libs.eisop.test)
 }
 
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xcontext-parameters")
+    }
+}
+
 tasks.compileJava {
     options.isFork = true
     val debugCompileProcess = project.properties["debugCompileProcess"] == "true"

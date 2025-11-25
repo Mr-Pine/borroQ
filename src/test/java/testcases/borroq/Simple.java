@@ -26,9 +26,9 @@ public class Simple {
     void invalid(@Release @Immutable Simple this) {
         @Mutable Object obj = new Object();
         @Mutable Object obj2 = new Object();
-        // :: error: (unsure)
         @Mutable Object objCopy = obj;
 
+        // :: error: permission.insufficient
         use(obj);
         use(obj2);
         use(objCopy);

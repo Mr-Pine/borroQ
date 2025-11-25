@@ -50,8 +50,26 @@ open class Permission(val fraction: Rational) {
 
             fun max(a: Rational, b: Rational) = if (a > b) a else b
         }
+
+        override fun equals(other: Any?): Boolean {
+            if (other !is Rational) return false
+            val reducedSelf = reduced()
+            val reducedOther = other.reduced()
+            return reducedSelf.numerator == reducedOther.numerator && reducedSelf.denominator == reducedOther.denominator
+        }
+
+        override fun hashCode(): Int {
+            var result = numerator
+            result = 31 * result + denominator
+            return result
+        }
     }
 
+    /**
+     * @param hint A hint to the split of how the permission should be split. If [Mutability.MUTABLE] is specified, the whole permission is split, leaving a `0` permission
+     *
+     * @return `splitPermission to remainingPermission`
+     */
     open fun split(hint: Mutability?): Pair<Permission, Permission> {
         val splitFraction = when (hint ?: Mutability.Companion.Defaults.split) {
             Mutability.IMMUTABLE -> this.fraction / 2

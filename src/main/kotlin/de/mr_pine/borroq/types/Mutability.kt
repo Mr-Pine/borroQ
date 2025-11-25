@@ -5,8 +5,8 @@ import de.mr_pine.borroq.qual.mutability.Mutable
 import org.checkerframework.javacutil.AnnotationUtils
 import javax.lang.model.element.AnnotationMirror
 
-enum class Mutability {
-    MUTABLE, IMMUTABLE, ;
+enum class Mutability(val permissionString: String) {
+    MUTABLE("mutable"), IMMUTABLE("readable");
 
     companion object {
         fun fromAnnotations(annotations: Collection<AnnotationMirror>): Mutability? {
