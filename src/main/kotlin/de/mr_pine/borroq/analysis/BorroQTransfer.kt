@@ -23,6 +23,8 @@ private typealias Input = TransferInput<PermissionValue, BorroQStore>
 class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: AnnotationQuery, val strictness: Strictness) :
     AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<PermissionValue, BorroQStore> {
 
+    private val signatureTypeAnalysis = SignatureTypeAnalysis()
+
     @OptIn(ExperimentalContracts::class)
     inline fun <R> exceptionReportContext(tree: Tree, block: () -> R): R {
         kotlin.contracts.contract {
@@ -75,7 +77,7 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
     ): Result {
         require(!input.containsTwoStores()) { "Method invocation node $node has two stores" }
         try {
-            val methodType = SignatureTypeAnalysis(annotationQuery).getType(node.target.method)
+            val methodType = signatureTypeAnalysis.getType(node.target.method)
             // TODO: Check super() constructor return mutability is compatible
             val outputStore = input.regularStore
 
@@ -129,7 +131,7 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
                 }
             }
 
-            return super.visitMethodInvocation(node, input)
+            return RegularTransferResult(null, outputStore)
         } catch (_: BorroQReportedException) {
             return RegularTransferResult(null, input.regularStore)
         }
