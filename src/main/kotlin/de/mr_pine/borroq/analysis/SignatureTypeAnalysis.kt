@@ -1,5 +1,6 @@
 package de.mr_pine.borroq.analysis
 
+import com.sun.tools.javac.code.Type
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.isStatic
 import de.mr_pine.borroq.types.Mutability
@@ -13,10 +14,19 @@ class SignatureTypeAnalysis {
 
     private val signatureCache: MutableMap<String, SignatureType> = mutableMapOf()
 
-    fun getType(method: ExecutableElement): SignatureType {
-        val fqn = ElementUtils.getQualifiedName(method)
+    val ExecutableElement.qualifiedDescriptor: String
+        get() {
+            val params =
+                parameters.map { it.asType() }.map {  }.joinToString(",")
+            val returnType = (returnType as? Type.ClassType)?.baseType() ?: returnType
+            val descriptor = "($params)$returnType"
+            return "${ElementUtils.getQualifiedName(enclosingElement)}.$simpleName${asType()}"
+        }
 
-        return signatureCache.getOrPut(fqn, defaultValue = { calculateType(method) })
+    fun getType(method: ExecutableElement): SignatureType {
+        val fqd = method.qualifiedDescriptor
+
+        return signatureCache.getOrPut(fqd, defaultValue = { calculateType(method) })
     }
 
     private fun calculateType(method: ExecutableElement): SignatureType {
