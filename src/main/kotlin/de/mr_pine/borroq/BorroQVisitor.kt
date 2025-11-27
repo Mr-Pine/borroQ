@@ -1,11 +1,10 @@
+@file:Suppress("JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE")
 package de.mr_pine.borroq
 
 import com.sun.source.tree.ClassTree
 import com.sun.source.tree.MethodTree
-import de.mr_pine.borroq.analysis.AnnotationQuery
-import de.mr_pine.borroq.analysis.BorroQStore
-import de.mr_pine.borroq.analysis.BorroQTransfer
-import de.mr_pine.borroq.analysis.MethodAnalysis
+import com.sun.tools.javac.tree.JCTree
+import de.mr_pine.borroq.analysis.*
 import de.mr_pine.borroq.types.PermissionValue
 import org.checkerframework.dataflow.cfg.ControlFlowGraph
 import org.checkerframework.dataflow.cfg.builder.CFGBuilder
@@ -35,11 +34,26 @@ class BorroQVisitor(
             currentClass ?: throw IllegalStateException("No current class available"),
             checker.processingEnvironment
         )
-        val analysis = MethodAnalysis(-1, BorroQTransfer(checker, annotationQuery, strictness))
+
+        val methodElement = (tree as JCTree.JCMethodDecl).sym
+        val signatureTypeAnalysis = SignatureTypeAnalysis(checker)
+
+        val analysis = MethodAnalysis(
+            -1,
+            BorroQTransfer(
+                signatureTypeAnalysis.getType(methodElement),
+                signatureTypeAnalysis,
+                checker,
+                annotationQuery,
+                strictness
+            )
+        )
         analysis.performAnalysis(cfg)
 
         visualizeCFG(cfg, analysis)
     }
+
+
 
     fun visualizeCFG(cfg: ControlFlowGraph, analysis: MethodAnalysis) {
         cfgVisualizer?.visualizeWithAction(cfg, cfg.entryBlock, analysis)

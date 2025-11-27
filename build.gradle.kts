@@ -27,12 +27,6 @@ kotlin {
 }
 
 tasks.compileJava {
-    options.isFork = true
-    val debugCompileProcess = project.properties["debugCompileProcess"] == "true"
-    if (debugCompileProcess) {
-        options.forkOptions.jvmArgs = listOf("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000")
-    }
-
     options.compilerArgs.add("-Xlint:all")
 }
 

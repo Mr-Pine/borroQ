@@ -1,5 +1,9 @@
+@file:Suppress("JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE")
+
 package de.mr_pine.borroq.analysis
 
+import com.sun.tools.javac.code.Symbol
+import com.sun.tools.javac.code.TargetType
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.analysis.stub.StubElementPrinter
 import de.mr_pine.borroq.analysis.stub.StubManager
@@ -83,16 +87,22 @@ class SignatureTypeAnalysis(checker: BorroQChecker) {
         return signatureType
     }
 
-    private fun calculateType(method: ExecutableElement): SignatureType {
+    private fun calculateType(executable: ExecutableElement): SignatureType {
         val returnPermission =
-            if ((method.returnType.kind.isPrimitive || method.returnType.kind == TypeKind.VOID) && !method.isConstructor) {
+            if (executable.isConstructor) {
+                executable as Symbol
+                val annotations = executable.rawTypeAttributes.filter { it.position.type == TargetType.METHOD_RETURN }
+                Mutability.fromAnnotations(annotations)
+                    ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
+            } else if (executable.returnType.kind.isPrimitive || executable.returnType.kind == TypeKind.VOID) {
                 null
             } else {
-                val annotations = method.returnType.annotationMirrors
-                Mutability.fromAnnotations(annotations) ?: Mutability.Companion.Defaults.returnType
+                val annotations = executable.returnType.annotationMirrors
+                Mutability.fromAnnotations(annotations)
+                    ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
             }
 
-        val parameterTypes = method.parameters.map { arg ->
+        val parameterTypes = executable.parameters.map { arg ->
             val typeAnnotations = arg.asType().annotationMirrors
 
             val mutability =
@@ -103,14 +113,14 @@ class SignatureTypeAnalysis(checker: BorroQChecker) {
             SignatureType.ArgumentType(mutability, releaseMode)
         }
 
-        val receiverType = if (method.isStatic || method.isConstructor) {
+        val receiverType = if (executable.isStatic || executable.isConstructor) {
             null
         } else {
             val receiverMutability =
-                Mutability.fromAnnotations(method.receiverType.annotationMirrors)
+                Mutability.fromAnnotations(executable.receiverType.annotationMirrors)
                     ?: Mutability.Companion.Defaults.parameter
-            val receiverReleaseMode = ReleaseMode.fromAnnotations(method.receiverType.annotationMirrors)
-                ?: throw IllegalStateException("No receiver release mode specified specified for ${method.simpleName}")
+            val receiverReleaseMode = ReleaseMode.fromAnnotations(executable.receiverType.annotationMirrors)
+                ?: throw IllegalStateException("No receiver release mode specified specified for ${executable.simpleName}")
             SignatureType.ArgumentType(receiverMutability, receiverReleaseMode)
         }
 

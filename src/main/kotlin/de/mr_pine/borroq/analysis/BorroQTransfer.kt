@@ -6,6 +6,8 @@ import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
 import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
+import de.mr_pine.borroq.analysis.exceptions.IncompatibleSuperConstructorMutability
+import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode.*
 import org.checkerframework.dataflow.analysis.ForwardTransferFunction
@@ -14,19 +16,23 @@ import org.checkerframework.dataflow.analysis.TransferInput
 import org.checkerframework.dataflow.analysis.TransferResult
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
-import org.checkerframework.javacutil.ElementUtils
 import kotlin.contracts.ExperimentalContracts
 
 private typealias Result = TransferResult<PermissionValue, BorroQStore>
 private typealias Input = TransferInput<PermissionValue, BorroQStore>
 
-class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: AnnotationQuery, val strictness: Strictness) :
+class BorroQTransfer(
+    private val signatureType: SignatureType,
+    private val signatureTypeAnalysis: SignatureTypeAnalysis,
+    private val checker: BorroQChecker,
+    private val annotationQuery: AnnotationQuery,
+    private val strictness: Strictness
+) :
     AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<PermissionValue, BorroQStore> {
 
-    private val signatureTypeAnalysis = SignatureTypeAnalysis(checker)
 
     @OptIn(ExperimentalContracts::class)
-    inline fun <R> exceptionReportContext(tree: Tree, block: () -> R): R {
+    private inline fun <R> exceptionReportContext(tree: Tree, block: () -> R): R {
         kotlin.contracts.contract {
             callsInPlace(block, kotlin.contracts.InvocationKind.EXACTLY_ONCE)
         }
@@ -54,9 +60,6 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
         node: Node, p: Input
     ): Result {
         val source = node.tree
-        if (node is MethodInvocationNode) {
-            println("Hi from call to ${ElementUtils.getQualifiedName(node.target.method)}")
-        }
 
         if (source == null) {
             System.err.println("Tree of node $node is null")
@@ -78,7 +81,11 @@ class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: Annotation
         require(!input.containsTwoStores()) { "Method invocation node $node has two stores" }
         try {
             val methodType = signatureTypeAnalysis.getType(node.target.method)
-            // TODO: Check super() constructor return mutability is compatible
+
+            if (node.target.method.isConstructor && methodType.returnMutability == Mutability.IMMUTABLE && signatureType.returnMutability == Mutability.MUTABLE) exceptionReportContext(node.tree!!) {
+                throw IncompatibleSuperConstructorMutability()
+            }
+
             val outputStore = input.regularStore
 
             fun receiverTree() = when (node.target.receiver) {
