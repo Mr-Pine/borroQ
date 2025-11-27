@@ -13,6 +13,7 @@ repositories {
 
 dependencies {
     implementation(libs.bundles.checker)
+    implementation(kotlin("reflect"))
 
     testImplementation(kotlin("test"))
     testImplementation(libs.eisop.test)
@@ -21,6 +22,7 @@ dependencies {
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xcontext-parameters")
+        freeCompilerArgs.add("-Xnested-type-aliases")
     }
 }
 

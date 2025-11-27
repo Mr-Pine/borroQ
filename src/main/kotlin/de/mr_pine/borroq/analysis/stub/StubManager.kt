@@ -1,20 +1,24 @@
 package de.mr_pine.borroq.analysis.stub
 
 import de.mr_pine.borroq.analysis.SignatureTypeAnalysis
-import org.checkerframework.com.github.javaparser.ast.ImportDeclaration
 import org.checkerframework.com.github.javaparser.ast.StubUnit
 import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
 import org.checkerframework.com.github.javaparser.ast.visitor.GenericVisitorAdapter
+import org.checkerframework.framework.qual.StubFiles
 import org.checkerframework.framework.source.SourceChecker
 import org.checkerframework.framework.util.JavaParserUtil
+import org.checkerframework.javacutil.BugInCF
 import org.checkerframework.javacutil.SystemUtil
 import java.io.File
 import java.io.InputStream
+import java.net.JarURLConnection
+import java.util.jar.JarEntry
 import javax.annotation.processing.ProcessingEnvironment
 import javax.lang.model.element.ElementKind
 import javax.lang.model.element.TypeElement
 import javax.lang.model.util.Elements
+import kotlin.streams.asSequence
 
 class StubManager(
     private val signatureAnalysis: SignatureTypeAnalysis,
@@ -23,31 +27,39 @@ class StubManager(
     private val options: StubOptions
 ) {
     data class StubOptions(
+        val parseAnnotatedJdk: Boolean,
         val ignoreJdkAstub: Boolean,
-        val parseAllJdkFiles: Boolean,
         val permitMissingJdk: Boolean,
         val debug: Boolean,
         val additionalStubs: List<String>
     ) {
-        val shouldParseJdk: Boolean
+        val shouldParseJdkAstub: Boolean
             get() = !ignoreJdkAstub
 
         companion object {
             val SourceChecker.stubOptions: StubOptions
-                get() = StubOptions(
-                    hasOption("ignorejdkastub"),
-                    hasOption("parseAllJdk"),
-                    hasOption("permitMissingJdk"),
-                    hasOption("stubDebug"),
-                    getOption("stubs")?.split(File.pathSeparator)?.filterNot(String::isNullOrBlank).orEmpty()
-                )
+                get() {
+                    val argumentStubs =
+                        getOption("stubs")?.split(File.pathSeparator)?.filterNot(String::isNullOrBlank).orEmpty()
+                    val checkerAnnotationStubs =
+                        StubOptions::class.annotations.filterIsInstance<StubFiles>().flatMap { it.value.asList() }
+                    val checkerMethodStubs = extraStubFiles
+                    val additionalStubs = argumentStubs + checkerAnnotationStubs + checkerMethodStubs
+
+                    return StubOptions(
+                        hasOption("parseAnnotatedJdk"),
+                        hasOption("ignorejdkastub"),
+                        hasOption("permitMissingJdk"),
+                        hasOption("stubDebug"),
+                        additionalStubs
+                    )
+                }
         }
     }
 
     fun parseStubFiles() {
-        if (options.shouldParseJdk) {
-            //region Annotated JDK
-            /*val resourceURL = signatureAnalysis.javaClass.getResource("/annotated-jdk")
+        if (options.parseAnnotatedJdk) {
+            val resourceURL = signatureAnalysis.javaClass.getResource("/annotated-jdk")
             if (resourceURL != null) {
                 require(resourceURL.protocol == "jar") { "JDK stubs must be in a jar file" }
 
@@ -56,13 +68,12 @@ class StubManager(
                     useCaches = false
                     connect()
                 }.jarFile.use { jarFile ->
-                    for (entry in jarFile.stream().asSequence().sortedBy(Any::toString)
-                        .filterNot(JarEntry::isDirectory)
+                    for (entry in jarFile.stream().asSequence().sortedBy(Any::toString).filterNot(JarEntry::isDirectory)
                         .filter { it.name.startsWith("annotated-jdk") || it.name.endsWith(".java") }) {
-                        val fqn = entry.name.substringAfter("/share/classes/").substringBeforeLast(".java")
-                            .replace("/", ".")
+                        val fqn =
+                            entry.name.substringAfter("/share/classes/").substringBeforeLast(".java").replace("/", ".")
                         jarFile.getInputStream(entry).use {
-                            parseStubFile(AnnotationFileUtil.AnnotationFileType.JDK_STUB, it)
+                            parseStubFile(it)
                         }
                     }
                 }
@@ -71,9 +82,9 @@ class StubManager(
                 throw BugInCF(
                     "JDK not found for type factory ${signatureAnalysis.javaClass.getSimpleName()}"
                 )
-            }*/
-            //endregion
-
+            }
+        }
+        if (options.shouldParseJdkAstub) {
             val jdkVersion = SystemUtil.getReleaseValue(processingEnvironment) ?: SystemUtil.jreVersion.toString()
             for (astubFile in listOf("", jdkVersion).map { "jdk$it.astub" }) {
                 signatureAnalysis.javaClass.getResourceAsStream(astubFile)?.use {
@@ -83,69 +94,57 @@ class StubManager(
                 }
             }
         }
-    }
 
-    @ConsistentCopyVisibility
-    data class ImportedAnnotationScopes private constructor(val annotations: MutableList<Pair<String, TypeElement>>) {
-        constructor() : this(mutableListOf())
-
-        fun push(simpleName: String, annotation: TypeElement) {
-            annotations.addLast(simpleName to annotation)
-        }
-
-        fun pop(): Pair<String, TypeElement> {
-            return annotations.removeLast()
-        }
-
-        operator fun get(index: String): TypeElement {
-            return annotations.last { it.first == index }.second
+        for (stubFile in options.additionalStubs) {
+            signatureAnalysis.javaClass.getResourceAsStream(stubFile)?.use {
+                parseStubFile(
+                    it
+                )
+            }
         }
     }
 
-    inner class StubSignatureVisitor : GenericVisitorAdapter<Nothing?, ImportedAnnotationScopes>() {
+    typealias ImportMap = Map<String, TypeElement>
+
+    inner class StubSignatureVisitor : GenericVisitorAdapter<Nothing?, ImportMap?>() {
         override fun visit(
-            n: StubUnit,
-            arg: ImportedAnnotationScopes
+            n: StubUnit, arg: ImportMap?
         ): Nothing? {
             for (compilationUnit in n.compilationUnits) {
-                compilationUnit.accept(this, arg)
+                val imports = buildMap {
+                    for (import in compilationUnit.imports) {
+                        if (!import.isStatic) {
+                            val annotations = if (import.isAsterisk) {
+                                val packageName = import.name.asString()
+                                val element = elements.getPackageElement(packageName)
+                                element?.enclosedElements?.filterIsInstance<TypeElement>()
+                                    ?.filter { it.kind == ElementKind.ANNOTATION_TYPE }.orEmpty()
+                            } else {
+                                val annotationName = import.name.asString()
+                                val annotation = elements.getTypeElement(annotationName)
+                                listOfNotNull(annotation)
+                            }
+                            for (annotation in annotations) {
+                                put(annotation.simpleName.toString(), annotation)
+                            }
+                        }
+                    }
+                }
+
+                compilationUnit.accept(this, imports)
             }
             return null
         }
 
         override fun visit(
-            import: ImportDeclaration,
-            arg: ImportedAnnotationScopes
+            constructor: ConstructorDeclaration, arg: ImportMap?
         ): Nothing? {
-            require(!import.isStatic)
-            val annotations = if (import.isAsterisk) {
-                val packageName = import.name.asString()
-                val element = elements.getPackageElement(packageName)!!
-                element.enclosedElements.filterIsInstance<TypeElement>().filter { it.kind == ElementKind.ANNOTATION_TYPE }
-            } else {
-                TODO()
-            }
-            for (annotation in annotations) {
-                arg.push(annotation.simpleName.toString(), annotation)
-            }
-            super.visit(import, arg)
-            repeat(annotations.size) {
-                arg.pop()
-            }
+            signatureAnalysis.getType(constructor, arg!!)
             return null
         }
 
         override fun visit(
-            constructor: ConstructorDeclaration,
-            arg: ImportedAnnotationScopes
-        ): Nothing? {
-            signatureAnalysis.getType(constructor)
-            return null
-        }
-
-        override fun visit(
-            method: MethodDeclaration,
-            arg: ImportedAnnotationScopes
+            method: MethodDeclaration, arg: ImportMap?
         ): Nothing? {
             signatureAnalysis.getType(method)
             return null
@@ -155,7 +154,6 @@ class StubManager(
     fun parseStubFile(inputStream: InputStream) {
         val stubUnit = JavaParserUtil.parseStubUnit(inputStream)
         val visitor = StubSignatureVisitor()
-        stubUnit.accept(visitor, ImportedAnnotationScopes())
-        TODO()
+        stubUnit.accept(visitor, null)
     }
 }
