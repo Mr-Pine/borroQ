@@ -1,32 +1,46 @@
 package de.mr_pine.borroq.analysis
 
-import com.sun.tools.javac.code.Type
+import de.mr_pine.borroq.BorroQChecker
+import de.mr_pine.borroq.analysis.stub.StubManager
+import de.mr_pine.borroq.analysis.stub.StubManager.StubOptions.Companion.stubOptions
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.isStatic
 import de.mr_pine.borroq.types.Mutability
 import de.mr_pine.borroq.types.SignatureType
 import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode
+import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
+import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
+import org.checkerframework.com.github.javaparser.ast.body.TypeDeclaration
 import org.checkerframework.javacutil.ElementUtils
 import javax.lang.model.element.ExecutableElement
 import javax.lang.model.type.TypeKind
 
-class SignatureTypeAnalysis {
+class SignatureTypeAnalysis(checker: BorroQChecker) {
 
     private val signatureCache: MutableMap<String, SignatureType> = mutableMapOf()
 
-    val ExecutableElement.qualifiedDescriptor: String
-        get() {
-            val params =
-                parameters.map { it.asType() }.map {  }.joinToString(",")
-            val returnType = (returnType as? Type.ClassType)?.baseType() ?: returnType
-            val descriptor = "($params)$returnType"
-            return "${ElementUtils.getQualifiedName(enclosingElement)}.$simpleName${asType()}"
-        }
+    init {
+        val stubManager = StubManager(this, checker.processingEnvironment, checker.elementUtils, checker.stubOptions)
+        stubManager.parseStubFiles()
+    }
 
     fun getType(method: ExecutableElement): SignatureType {
-        val fqd = method.qualifiedDescriptor
+        val qualifiedName =
+            ElementUtils.getQualifiedName(method) // This isn't really a qualified method name (I'm not even sure such a thing exists)
 
-        return signatureCache.getOrPut(fqd, defaultValue = { calculateType(method) })
+        return signatureCache.getOrPut(qualifiedName, defaultValue = { calculateType(method) })
+    }
+
+    fun getType(constructor: ConstructorDeclaration): SignatureType {
+        val parent = constructor.parentNode.get() as TypeDeclaration<*>
+        val fqnParentName = parent.fullyQualifiedName.get()
+        val fqd = "$fqnParentName.${constructor.toDescriptor()}"
+
+        TODO()
+    }
+
+    fun getType(method: MethodDeclaration): SignatureType {
+        TODO()
     }
 
     private fun calculateType(method: ExecutableElement): SignatureType {

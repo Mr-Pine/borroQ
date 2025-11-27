@@ -1,0 +1,5 @@
+package java.lang;
+import de.mr_pine.borroq.qual.mutability.*;
+public class Object {
+@Mutable Object();
+}

@@ -23,7 +23,7 @@ private typealias Input = TransferInput<PermissionValue, BorroQStore>
 class BorroQTransfer(val checker: BorroQChecker, val annotationQuery: AnnotationQuery, val strictness: Strictness) :
     AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<PermissionValue, BorroQStore> {
 
-    private val signatureTypeAnalysis = SignatureTypeAnalysis()
+    private val signatureTypeAnalysis = SignatureTypeAnalysis(checker)
 
     @OptIn(ExperimentalContracts::class)
     inline fun <R> exceptionReportContext(tree: Tree, block: () -> R): R {
