@@ -9,6 +9,7 @@ import de.mr_pine.borroq.isStatic
 import de.mr_pine.borroq.types.Mutability
 import de.mr_pine.borroq.types.SignatureType
 import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode
+import org.checkerframework.com.github.javaparser.ast.body.CallableDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.TypeDeclaration
@@ -30,51 +31,56 @@ class SignatureTypeAnalysis(checker: BorroQChecker) {
         stubManager.parseStubFiles()
     }
 
-    context(annotations: StubManager.ImportMap)
-    private fun List<AnnotationExpr>.annotationElements() = mapNotNull { annot ->
-        val simpleName = annot.nameAsString
-        val typeElement = annotations[simpleName] ?: elements.getTypeElement(simpleName) ?: elements.getTypeElement("java.lang.$simpleName")
-        val annotation = when (annot) {
-            is MarkerAnnotationExpr -> AnnotationBuilder.fromName(elements, typeElement.qualifiedName)!!
-            else -> null // TODO: Currently there are no values, but there will be
-        }
-        annotation
-    }
-
     fun getType(method: ExecutableElement): SignatureType {
         return signatureCache.getOrPut(method, defaultValue = { calculateType(method) })
     }
 
-    fun getType(constructor: ConstructorDeclaration, annotations: StubManager.ImportMap): SignatureType? {
-        val parent = constructor.parentNode.get() as TypeDeclaration<*>
+    fun getType(callable: CallableDeclaration<*>, annotations: StubManager.ImportMap): SignatureType? {
+        val parent = callable.parentNode.get() as TypeDeclaration<*>
         val fqnParentName = parent.fullyQualifiedName.get()
         val parentElement = elements.getTypeElement(fqnParentName) ?: return null
-        val simpleSignature = StubElementPrinter.print(constructor)
+        val simpleSignature = StubElementPrinter.print(callable)
 
-        val identicalSimpleConstructors = parentElement.enclosedElements.filter { it.kind == ElementKind.CONSTRUCTOR }
-            .filterIsInstance<ExecutableElement>().filter { it.parameters.size == constructor.parameters.size }
+        val identicalSimpleConstructors = parentElement.enclosedElements.filter {
+            it.kind ==
+                    when (callable) {
+                        is MethodDeclaration -> ElementKind.METHOD
+                        is ConstructorDeclaration -> ElementKind.CONSTRUCTOR
+                        else -> throw IllegalStateException("Unexpected callable type: ${callable.javaClass}")
+                    }
+        }
+            .filterIsInstance<ExecutableElement>().filter { it.parameters.size == callable.parameters.size }
             .filter { ElementUtils.getSimpleSignature(it) == simpleSignature }
         require(identicalSimpleConstructors.size <= 1) {
             "Multiple or no constructors with identical signature found: $simpleSignature"
         }
         val element = identicalSimpleConstructors.firstOrNull() ?: return null // No matching constructor found
 
-        val returnAnnotations = context(annotations) { constructor.annotations.annotationElements() }
+        fun List<AnnotationExpr>.annotationElements() = mapNotNull { annot ->
+            val simpleName = annot.nameAsString
+            val typeElement = annotations[simpleName] ?: elements.getTypeElement(simpleName)
+            ?: elements.getTypeElement("java.lang.$simpleName")
+            val annotation = when (annot) {
+                is MarkerAnnotationExpr -> AnnotationBuilder.fromName(elements, typeElement.qualifiedName)!!
+                else -> null // TODO: Currently there are no values, but there will be
+            }
+            annotation
+        }
+
+        val returnAnnotations = callable.annotations.annotationElements()
         val returnMutability = Mutability.fromAnnotations(returnAnnotations)
 
-        val parameterTypes = constructor.parameters.map {
-            val parameterAnnotations = context(annotations) { it.annotations.annotationElements() }
-            val mutability = Mutability.fromAnnotations(parameterAnnotations) ?: return null // throw IllegalStateException("No mutability specified")
-            val releaseMode = ReleaseMode.fromAnnotations(parameterAnnotations) ?: return null // throw IllegalStateException("No release mode specified")
+        val parameterTypes = callable.parameters.map {
+            val parameterAnnotations = it.annotations.annotationElements()
+            val mutability = Mutability.fromAnnotations(parameterAnnotations)
+                ?: return null // throw IllegalStateException("No mutability specified")
+            val releaseMode = ReleaseMode.fromAnnotations(parameterAnnotations)
+                ?: return null // throw IllegalStateException("No release mode specified")
             SignatureType.ArgumentType(mutability, releaseMode)
         }
         val signatureType = SignatureType(returnMutability, null, parameterTypes)
         signatureCache[element] = signatureType
         return signatureType
-    }
-
-    fun getType(method: MethodDeclaration): SignatureType? {
-        return null
     }
 
     private fun calculateType(method: ExecutableElement): SignatureType {
@@ -89,7 +95,8 @@ class SignatureTypeAnalysis(checker: BorroQChecker) {
         val parameterTypes = method.parameters.map { arg ->
             val typeAnnotations = arg.asType().annotationMirrors
 
-            val mutability = Mutability.fromAnnotations(typeAnnotations) ?: throw IllegalStateException("No mutability specified")
+            val mutability =
+                Mutability.fromAnnotations(typeAnnotations) ?: throw IllegalStateException("No mutability specified")
             val releaseMode =
                 ReleaseMode.fromAnnotations(typeAnnotations) ?: throw IllegalStateException("No release mode specified")
 

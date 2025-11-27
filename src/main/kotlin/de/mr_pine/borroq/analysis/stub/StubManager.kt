@@ -146,7 +146,7 @@ class StubManager(
         override fun visit(
             method: MethodDeclaration, arg: ImportMap?
         ): Nothing? {
-            signatureAnalysis.getType(method)
+            signatureAnalysis.getType(method, arg!!)
             return null
         }
     }
