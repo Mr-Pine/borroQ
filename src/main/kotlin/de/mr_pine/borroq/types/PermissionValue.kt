@@ -7,8 +7,23 @@ sealed interface PermissionValue : AbstractValue<PermissionValue> {
         TODO("Not yet implemented")
     }
 
-    data class FreePermission(val permission: Permission) : PermissionValue
-    data object Primitive : PermissionValue
+    val isMutable: Boolean
+        get() = false
+    val isReadable: Boolean
+        get() = false
+
+    data class FreePermission(val permission: Permission) : PermissionValue {
+        override val isMutable: Boolean
+            get() = permission.fraction == Permission.Rational.ONE
+        override val isReadable: Boolean
+            get() = permission.fraction > Permission.Rational.ZERO
+    }
+
+
+    data object Primitive : PermissionValue {
+        override val isMutable: Boolean get() = false
+        override val isReadable: Boolean get() = true
+    }
 }
 
 fun Permission.asValue() = PermissionValue.FreePermission(this)

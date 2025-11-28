@@ -6,6 +6,7 @@ import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
 import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
+import de.mr_pine.borroq.analysis.exceptions.IncompatibleReturnPermission
 import de.mr_pine.borroq.analysis.exceptions.IncompatibleSuperConstructorMutability
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
@@ -220,6 +221,33 @@ class BorroQTransfer(
         return RegularTransferResult(
             Permission(Permission.Rational.ONE).asValue(), p.regularStore
         )
+    }
+
+    override fun visitReturn(
+        node: ReturnNode,
+        input: Input
+    ): Result = try {
+        exceptionReportContext(node.tree!!) {
+            require(!input.containsTwoStores()) { "Return node $node with two stores" }
+            if (node.result == null) return node.regularResult(null, input.regularStore, false)
+            val returnPermission = input.getValueOfSubNode(node.result)!!
+
+            when (signatureType.returnMutability!!) {
+                Mutability.MUTABLE -> if (!returnPermission.isMutable) throw IncompatibleReturnPermission(
+                    returnPermission,
+                    signatureType.returnMutability
+                )
+
+                Mutability.IMMUTABLE -> if (!returnPermission.isReadable) throw IncompatibleReturnPermission(
+                    returnPermission,
+                    signatureType.returnMutability
+                )
+            }
+
+            node.regularResult(null, input.regularStore, false)
+        }
+    } catch (_: BorroQReportedException) {
+        node.regularResult(null, input.regularStore, false)
     }
 
     override fun visitStringLiteral(

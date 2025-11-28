@@ -11,9 +11,9 @@ class BorroQTest(testFile: File?) : CheckerFrameworkPerFileTest(
     BorroQChecker::class.java,
     "de/mr_pine/borroq",
     //"-Adetailedmsgtext",
+    //"-Astrictness=allow-unknown",
     "-Astubs=stubs/",
     "-Aflowdotdir=build/cfgraphs/",
-    "-Astrictness=allow-unknown",
     "-nowarn"
 ) {
     companion object {

@@ -12,9 +12,4 @@ sealed interface VariablePermission : PermissionValue {
         other as IdentifiedPermission
         maxFractional(other)
     }
-
-    val isMutable: Boolean
-        get() = false
-    val isReadable: Boolean
-        get() = false
 }

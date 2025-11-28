@@ -5,4 +5,5 @@ object Messages {
     const val INSUFFICIENT_PERMISSION = "permission.insufficient"
     const val TOP_PERMISSION_ENCOUNTERED = "permission.top"
     const val INCOMPATIBLE_SUPER_CONSTRUCTOR_MUTABILITY = "permission.super.incompatible"
+    const val INCOMPATIBLE_RETURN_PERMISSION = "permission.return.incompatible"
 }
