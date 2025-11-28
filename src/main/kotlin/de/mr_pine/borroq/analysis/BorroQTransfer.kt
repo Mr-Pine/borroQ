@@ -211,7 +211,7 @@ class BorroQTransfer(
     ): Result {
         require(!input.containsTwoStores()) { "Local variable node $node is in two stores" }
         val permission = input.regularStore.queryPermission(node)
-        return RegularTransferResult(permission, input.regularStore)
+        return node.regularResult(permission, input.regularStore)
     }
 
     override fun visitObjectCreation(
@@ -222,7 +222,24 @@ class BorroQTransfer(
         )
     }
 
+    override fun visitStringLiteral(
+        node: StringLiteralNode,
+        p: Input
+    ): Result {
+        return node.regularResult(
+            PermissionValue.FreePermission(Permission(Permission.Rational.HALF)),
+            p.regularStore
+        )
+    }
+
     //region Noop visit functions
+    override fun visitVariableDeclaration(
+        n: VariableDeclarationNode,
+        p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
     override fun visitExpressionStatement(
         n: ExpressionStatementNode, p: Input
     ): Result {

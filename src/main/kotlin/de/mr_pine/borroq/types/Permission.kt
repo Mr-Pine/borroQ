@@ -44,6 +44,7 @@ open class Permission(val fraction: Rational) {
             operator fun Int.minus(other: Rational) = this.asRational() - other
 
             val ONE = 1.asRational()
+            val HALF = ONE / 2
             val ZERO = 0.asRational()
 
             fun max(a: Rational, b: Rational) = if (a > b) a else b
