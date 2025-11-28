@@ -14,9 +14,9 @@ sealed interface PermissionValue : AbstractValue<PermissionValue> {
 
     data class FreePermission(val permission: Permission) : PermissionValue {
         override val isMutable: Boolean
-            get() = permission.fraction == Permission.Rational.ONE
+            get() = permission.fraction == Rational.ONE
         override val isReadable: Boolean
-            get() = permission.fraction > Permission.Rational.ZERO
+            get() = permission.fraction > Rational.ZERO
     }
 
 

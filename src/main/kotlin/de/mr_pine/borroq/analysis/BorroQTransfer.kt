@@ -219,7 +219,7 @@ class BorroQTransfer(
         n: ObjectCreationNode, p: Input
     ): Result {
         return RegularTransferResult(
-            Permission(Permission.Rational.ONE).asValue(), p.regularStore
+            Permission(Rational.ONE).asValue(), p.regularStore
         )
     }
 
@@ -255,7 +255,7 @@ class BorroQTransfer(
         p: Input
     ): Result {
         return node.regularResult(
-            PermissionValue.FreePermission(Permission(Permission.Rational.HALF)),
+            PermissionValue.FreePermission(Permission(Rational.HALF)),
             p.regularStore
         )
     }

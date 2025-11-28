@@ -16,7 +16,7 @@ class BorroQStore private constructor(
 ) : Store<BorroQStore> {
 
     constructor() : this(
-        mutableMapOf(), IdentifiedPermission(Permission.Rational.ONE, Id("this")), mutableListOf()
+        mutableMapOf(), IdentifiedPermission(Rational.ONE, Id("this")), mutableListOf()
     )
 
     override fun copy() = BorroQStore(variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
@@ -123,7 +123,7 @@ class BorroQStore private constructor(
                         .filter { (_, value) -> value.id == id }
                         .map(Map.Entry<LocalVariable, IdentifiedPermission>::key)
                 val otherVariable = otherVariables.firstOrNull() ?: return
-                variablePermissions[expression] = Permission(Permission.Rational.ZERO).withId(id)
+                variablePermissions[expression] = Permission(Rational.ZERO).withId(id)
                 recombine(otherVariable, permission)
             }
 
