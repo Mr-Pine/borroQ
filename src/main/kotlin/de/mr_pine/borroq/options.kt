@@ -1,9 +1,7 @@
 package de.mr_pine.borroq
 
 enum class Strictness {
-    STRICT,
-    ALLOW_UNKNOWN,
-    ;
+    STRICT, WARN_UNKNOWN, ALLOW_UNKNOWN;
 
     companion object {
         const val KEY = "strictness"

@@ -13,6 +13,7 @@ repositories {
 
 dependencies {
     implementation(libs.bundles.checker)
+    implementation(libs.plumelib.util)
     implementation(kotlin("reflect"))
 
     testImplementation(kotlin("test"))

@@ -19,7 +19,7 @@ public class LiveVarNode {
      * LocalVariableNode} or {@link
      * FieldAccessNode}.
      */
-    protected final Node liveVariable;
+    public final Node liveVariable;
 
     /**
      * Create a new live variable.

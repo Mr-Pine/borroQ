@@ -44,15 +44,11 @@ class BorroQStore private constructor(
             is IdentifiedPermission -> {
                 when (parameterMutability) {
                     Mutability.MUTABLE -> if (!availablePermission.isMutable) throw InsufficientPermissionException(
-                        argument.toString(),
-                        Mutability.MUTABLE,
-                        availablePermission
+                        argument.toString(), Mutability.MUTABLE, availablePermission
                     )
 
                     Mutability.IMMUTABLE -> if (!availablePermission.isReadable) throw InsufficientPermissionException(
-                        argument.toString(),
-                        Mutability.IMMUTABLE,
-                        availablePermission
+                        argument.toString(), Mutability.IMMUTABLE, availablePermission
                     )
                 }
 
@@ -74,15 +70,11 @@ class BorroQStore private constructor(
             is IdentifiedPermission -> {
                 when (mutability) {
                     Mutability.MUTABLE -> if (!availablePermission.isMutable) throw InsufficientPermissionException(
-                        "this",
-                        Mutability.MUTABLE,
-                        availablePermission
+                        "this", Mutability.MUTABLE, availablePermission
                     )
 
                     Mutability.IMMUTABLE -> if (!availablePermission.isReadable) throw InsufficientPermissionException(
-                        "this",
-                        Mutability.IMMUTABLE,
-                        availablePermission
+                        "this", Mutability.IMMUTABLE, availablePermission
                     )
                 }
 
@@ -95,16 +87,17 @@ class BorroQStore private constructor(
         return split
     }
 
+    fun recombine(receiver: LocalVariable, permission: VariablePermission) {
+        val existingPermission = variablePermissions[receiver]!!
+        require(existingPermission is IdentifiedPermission) { "Cannot recombine with non-identified permission" }
+        require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
+        require(existingPermission.id == permission.id) { "Cannot recombine permissions with different ids" }
+        variablePermissions[receiver] = existingPermission.recombineFractional(permission)
+    }
+
     fun recombine(receiver: Node, permission: VariablePermission) {
         when (val expression = JavaExpression.fromNode(receiver)) {
-            is LocalVariable -> {
-                val existingPermission = variablePermissions[expression]!!
-                require(existingPermission is IdentifiedPermission) { "Cannot recombine with non-identified permission" }
-                require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
-                require(existingPermission.id == permission.id) { "Cannot recombine permissions with different ids" }
-                variablePermissions[expression] = existingPermission.combineFractional(permission)
-            }
-
+            is LocalVariable -> recombine(expression, permission)
             else -> TODO()
         }
     }
@@ -113,7 +106,29 @@ class BorroQStore private constructor(
         require(thisPermission is IdentifiedPermission) { "Cannot recombine with non-identified permission" }
         require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
         require((thisPermission as IdentifiedPermission).id == permission.id) { "Cannot recombine permissions with different ids" }
-        thisPermission = (thisPermission as IdentifiedPermission).combineFractional(permission)
+        thisPermission = (thisPermission as IdentifiedPermission).recombineFractional(permission)
+    }
+
+    fun killVariable(liveVariable: Node) {
+        when (val expression = JavaExpression.fromNode(liveVariable)) {
+            is LocalVariable -> {
+                val permission = variablePermissions[expression]!!
+                if (permission !is IdentifiedPermission) {
+                    return
+                }
+                val id = permission.id
+                val otherVariables =
+                    variablePermissions.entries.filterIsInstance<Map.Entry<LocalVariable, IdentifiedPermission>>()
+                        .filter { (key, _) -> key != expression }
+                        .filter { (_, value) -> value.id == id }
+                        .map(Map.Entry<LocalVariable, IdentifiedPermission>::key)
+                val otherVariable = otherVariables.firstOrNull() ?: return
+                variablePermissions[expression] = Permission(Permission.Rational.ZERO).withId(id)
+                recombine(otherVariable, permission)
+            }
+
+            else -> TODO()
+        }
     }
 
     fun queryPermission(target: Node): VariablePermission? {

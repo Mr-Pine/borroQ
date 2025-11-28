@@ -8,7 +8,7 @@ import javax.lang.model.element.AnnotationMirror
 
 class AnnotationQuery(val checker: BorroQChecker) {
     fun getDeclaredVariableAnnotations(tree: VariableTree): List<AnnotationMirror> {
-        return TreeUtils.elementFromDeclaration(tree)?.annotationMirrors!!
+        return TreeUtils.elementFromDeclaration(tree).asType().annotationMirrors
     }
 
     fun getAssignmentLeftSideAnnotations(tree: Tree) = when (tree) {

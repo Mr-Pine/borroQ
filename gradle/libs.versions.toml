@@ -2,10 +2,13 @@
 kotlin = "2.2.20"
 dokka = "2.1.0"
 eisop = "3.49.3-eisop1"
+plumelib = "1.11.0"
 
 [libraries]
 checker = { group = "io.github.eisop", name = "checker", version.ref = "eisop" }
 checker-qual = { group = "io.github.eisop", name = "checker-qual", version.ref = "eisop" }
+
+plumelib-util = {group = "org.plumelib", name = "plume-util", version.ref = "plumelib"}
 
 eisop-test = { group = "io.github.eisop", name = "framework-test", version.ref = "eisop" }
 

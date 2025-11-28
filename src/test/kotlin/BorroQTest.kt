@@ -13,6 +13,7 @@ class BorroQTest(testFile: File?) : CheckerFrameworkPerFileTest(
     //"-Adetailedmsgtext",
     "-Astubs=stubs/",
     "-Aflowdotdir=build/cfgraphs/",
+    "-Astrictness=allow-unknown",
     "-nowarn"
 ) {
     companion object {

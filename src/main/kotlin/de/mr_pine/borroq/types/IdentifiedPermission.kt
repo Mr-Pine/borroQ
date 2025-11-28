@@ -10,12 +10,17 @@ class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction
         return a.withId(id) to b.withId(id)
     }
 
-    fun combineFractional(other: IdentifiedPermission) =
+    fun maxFractional(other: IdentifiedPermission) =
         if (id != other.id) {
             VariablePermission.Top
         } else {
             IdentifiedPermission(Rational.max(this.fraction, other.fraction), id)
         }
+
+    fun recombineFractional(other: IdentifiedPermission): IdentifiedPermission {
+        require(id == other.id) { "Cannot recombine a non-identified permission with different ids" }
+        return IdentifiedPermission(fraction + other.fraction, id)
+    }
 
     override fun toString(): String {
         val perm = super.toString()

@@ -33,6 +33,10 @@ public class LiveVarStore implements Store<LiveVarStore> {
         this.liveVarNodeSet = liveVarNodeSet;
     }
 
+    public Set<LiveVarNode> getLiveVariables() {
+        return Set.copyOf(liveVarNodeSet);
+    }
+
     /**
      * Add the information of a live variable into the live variable set.
      *

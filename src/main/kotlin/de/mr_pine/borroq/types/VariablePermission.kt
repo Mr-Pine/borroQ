@@ -10,7 +10,7 @@ sealed interface VariablePermission : PermissionValue {
     } else {
         this as IdentifiedPermission
         other as IdentifiedPermission
-        combineFractional(other)
+        maxFractional(other)
     }
 
     val isMutable: Boolean

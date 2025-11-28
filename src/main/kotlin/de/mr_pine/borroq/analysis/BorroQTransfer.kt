@@ -7,13 +7,11 @@ import de.mr_pine.borroq.Strictness
 import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
 import de.mr_pine.borroq.analysis.exceptions.IncompatibleSuperConstructorMutability
+import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode.*
-import org.checkerframework.dataflow.analysis.ForwardTransferFunction
-import org.checkerframework.dataflow.analysis.RegularTransferResult
-import org.checkerframework.dataflow.analysis.TransferInput
-import org.checkerframework.dataflow.analysis.TransferResult
+import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
 import kotlin.contracts.ExperimentalContracts
@@ -24,12 +22,25 @@ private typealias Input = TransferInput<PermissionValue, BorroQStore>
 class BorroQTransfer(
     private val signatureType: SignatureType,
     private val signatureTypeAnalysis: SignatureTypeAnalysis,
+    private val liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
     private val checker: BorroQChecker,
     private val annotationQuery: AnnotationQuery,
     private val strictness: Strictness
 ) :
     AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<PermissionValue, BorroQStore> {
 
+    fun Node.regularResult(
+        value: PermissionValue?,
+        store: BorroQStore,
+        storeChanged: Boolean = true
+    ): RegularTransferResult<PermissionValue, BorroQStore> {
+        val died =
+            liveness.getStoreBefore(this)?.liveVariables.orEmpty() - liveness.getStoreAfter(this)?.liveVariables.orEmpty()
+        for (variable in died) {
+            store.killVariable(variable.liveVariable)
+        }
+        return RegularTransferResult(value, store, storeChanged)
+    }
 
     @OptIn(ExperimentalContracts::class)
     private inline fun <R> exceptionReportContext(tree: Tree, block: () -> R): R {
@@ -54,7 +65,7 @@ class BorroQTransfer(
 
     fun doNothing(
         node: Node, input: Input
-    ): Result = RegularTransferResult(null, input.regularStore)
+    ): Result = node.regularResult(null, input.regularStore, false)
 
     override fun visitNode(
         node: Node, p: Input
@@ -64,14 +75,14 @@ class BorroQTransfer(
         if (source == null) {
             System.err.println("Tree of node $node is null")
         } else {
-            if (strictness == Strictness.STRICT) {
-                checker.reportError(source, Messages.UNKNOWN_TREE_ENCOUNTERED, source.kind)
-            } else {
-                checker.reportWarning(source, Messages.UNKNOWN_TREE_ENCOUNTERED, source.kind)
+            when (strictness) {
+                Strictness.STRICT -> checker.reportError(source, Messages.UNKNOWN_TREE_ENCOUNTERED, source.kind)
+                Strictness.WARN_UNKNOWN -> checker.reportWarning(source, Messages.UNKNOWN_TREE_ENCOUNTERED, source.kind)
+                Strictness.ALLOW_UNKNOWN -> {}
             }
         }
 
-        return RegularTransferResult(null, p.regularStore)
+        return node.regularResult(null, p.regularStore, false)
     }
 
 
@@ -82,7 +93,9 @@ class BorroQTransfer(
         try {
             val methodType = signatureTypeAnalysis.getType(node.target.method)
 
-            if (node.target.method.isConstructor && methodType.returnMutability == Mutability.IMMUTABLE && signatureType.returnMutability == Mutability.MUTABLE) exceptionReportContext(node.tree!!) {
+            if (node.target.method.isConstructor && methodType.returnMutability == Mutability.IMMUTABLE && signatureType.returnMutability == Mutability.MUTABLE) exceptionReportContext(
+                node.tree!!
+            ) {
                 throw IncompatibleSuperConstructorMutability()
             }
 
@@ -138,9 +151,9 @@ class BorroQTransfer(
                 }
             }
 
-            return RegularTransferResult(null, outputStore)
+            return node.regularResult(null, outputStore)
         } catch (_: BorroQReportedException) {
-            return RegularTransferResult(null, input.regularStore)
+            return node.regularResult(null, input.regularStore)
         }
     }
 
@@ -165,7 +178,7 @@ class BorroQTransfer(
             } else {
                 val store = input.getRegularStore()
                 store.storeUpdate()
-                RegularTransferResult(value, store, true)
+                node.regularResult(value, store)
             }
         }
 

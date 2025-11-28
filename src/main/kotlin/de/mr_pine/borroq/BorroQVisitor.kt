@@ -1,11 +1,14 @@
 @file:Suppress("JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE")
+
 package de.mr_pine.borroq
 
 import com.sun.source.tree.ClassTree
 import com.sun.source.tree.MethodTree
 import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.analysis.*
+import de.mr_pine.borroq.analysis.livevariable.LiveVarTransfer
 import de.mr_pine.borroq.types.PermissionValue
+import org.checkerframework.dataflow.analysis.BackwardAnalysisImpl
 import org.checkerframework.dataflow.cfg.ControlFlowGraph
 import org.checkerframework.dataflow.cfg.builder.CFGBuilder
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
@@ -27,32 +30,41 @@ class BorroQVisitor(
         return super.visitClass(classTree, p)
     }
 
-    override fun visitMethod(tree: MethodTree?, p: Unit?) {
+    override fun visitMethod(tree: MethodTree, p: Unit?) {
+        if (tree.body == null) return // Abstract/Interface method
+
         val cfg = CFGBuilder.build(
             root ?: throw IllegalStateException("No root tree present"),
-            tree!!,
+            tree,
             currentClass ?: throw IllegalStateException("No current class available"),
             checker.processingEnvironment
         )
 
+        val livenessAnalysis = BackwardAnalysisImpl(LiveVarTransfer())
+        livenessAnalysis.performAnalysis(cfg)
+        val livenessResult = livenessAnalysis.result
+
         val methodElement = (tree as JCTree.JCMethodDecl).sym
         val signatureTypeAnalysis = SignatureTypeAnalysis(checker)
+        val signatureType = signatureTypeAnalysis.getType(methodElement)
+
+        val transfer = BorroQTransfer(
+            signatureType,
+            signatureTypeAnalysis,
+            livenessResult,
+            checker,
+            annotationQuery,
+            strictness
+        )
 
         val analysis = MethodAnalysis(
             -1,
-            BorroQTransfer(
-                signatureTypeAnalysis.getType(methodElement),
-                signatureTypeAnalysis,
-                checker,
-                annotationQuery,
-                strictness
-            )
+            transfer
         )
         analysis.performAnalysis(cfg)
 
         visualizeCFG(cfg, analysis)
     }
-
 
 
     fun visualizeCFG(cfg: ControlFlowGraph, analysis: MethodAnalysis) {
