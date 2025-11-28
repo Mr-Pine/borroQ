@@ -67,10 +67,11 @@ class BorroQVisitor(
             }
             val verbose = checker.hasOption("verbosecfg")
 
-            val args: MutableMap<String?, Any?> = HashMap<String?, Any?>(4)
-            args.put("outdir", flowdotdir)
-            args.put("verbose", verbose)
-            args.put("checkerName", checker::class.simpleName)
+            val args = buildMap {
+                this["outdir"] = flowdotdir
+                this["verbose"] = verbose
+                this["checkerName"] = checker::class.simpleName
+            }
 
             val res = DOTCFGVisualizer<PermissionValue, BorroQStore, BorroQTransfer>()
             res.init(args)
