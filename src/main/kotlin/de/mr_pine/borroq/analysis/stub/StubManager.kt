@@ -1,6 +1,6 @@
 package de.mr_pine.borroq.analysis.stub
 
-import de.mr_pine.borroq.analysis.SignatureTypeAnalysis
+import de.mr_pine.borroq.analysis.MemberTypeAnalysis
 import org.checkerframework.com.github.javaparser.ast.StubUnit
 import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
@@ -21,7 +21,7 @@ import javax.lang.model.util.Elements
 import kotlin.streams.asSequence
 
 class StubManager(
-    private val signatureAnalysis: SignatureTypeAnalysis,
+    private val signatureAnalysis: MemberTypeAnalysis,
     private val processingEnvironment: ProcessingEnvironment,
     private val elements: Elements,
     private val options: StubOptions

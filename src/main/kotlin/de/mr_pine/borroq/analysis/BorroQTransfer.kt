@@ -15,26 +15,25 @@ import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode.
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
+import org.checkerframework.dataflow.expression.JavaExpression
+import org.checkerframework.dataflow.expression.LocalVariable
 import kotlin.contracts.ExperimentalContracts
 
-private typealias Result = TransferResult<PermissionValue, BorroQStore>
-private typealias Input = TransferInput<PermissionValue, BorroQStore>
+private typealias Result = TransferResult<BorroQValue, BorroQStore>
+private typealias Input = TransferInput<BorroQValue, BorroQStore>
 
 class BorroQTransfer(
     private val signatureType: SignatureType,
-    private val signatureTypeAnalysis: SignatureTypeAnalysis,
+    private val memberTypeAnalysis: MemberTypeAnalysis,
     private val liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
     private val checker: BorroQChecker,
     private val annotationQuery: AnnotationQuery,
     private val strictness: Strictness
-) :
-    AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<PermissionValue, BorroQStore> {
+) : AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<BorroQValue, BorroQStore> {
 
     fun Node.regularResult(
-        value: PermissionValue?,
-        store: BorroQStore,
-        storeChanged: Boolean = true
-    ): RegularTransferResult<PermissionValue, BorroQStore> {
+        value: BorroQValue?, store: BorroQStore, storeChanged: Boolean = true
+    ): RegularTransferResult<BorroQValue, BorroQStore> {
         val died =
             liveness.getStoreBefore(this)?.liveVariables.orEmpty() - liveness.getStoreAfter(this)?.liveVariables.orEmpty()
         for (variable in died) {
@@ -92,7 +91,7 @@ class BorroQTransfer(
     ): Result {
         require(!input.containsTwoStores()) { "Method invocation node $node has two stores" }
         try {
-            val methodType = signatureTypeAnalysis.getType(node.target.method)
+            val methodType = memberTypeAnalysis.getType(node.target.method)
 
             if (node.target.method.isConstructor && methodType.returnMutability == Mutability.IMMUTABLE && signatureType.returnMutability == Mutability.MUTABLE) exceptionReportContext(
                 node.tree!!
@@ -103,29 +102,26 @@ class BorroQTransfer(
             val outputStore = input.regularStore
 
             fun receiverTree() = when (node.target.receiver) {
-                is ExplicitThisNode -> node.target.receiver.tree!!
                 is ImplicitThisNode -> node.target.tree!!
-                else -> throw IllegalStateException("Unexpected receiver type ${node.target.receiver}")
+                else -> node.target.receiver.tree!!
             }
 
-            val receiverPermission =
-                if (methodType.receiverType != null) exceptionReportContext(receiverTree()) {
-                    when (node.target.receiver) {
-                        is ThisNode -> outputStore.chooseAndRemoveThisReceiverPermission(methodType.receiverType.mutability)
-                        else -> outputStore.chooseAndRemoveArgumentPermission(
-                            node.target.receiver,
-                            methodType.receiverType.mutability
-                        )
-                    }
-                } else {
-                    null
+            val receiverPermission = if (methodType.receiverType != null) exceptionReportContext(receiverTree()) {
+                when (node.target.receiver) {
+                    is ThisNode -> outputStore.chooseAndRemoveThisReceiverPermission(methodType.receiverType.mutability)
+                    else -> outputStore.chooseAndRemoveArgumentPermission(
+                        node.target.receiver, methodType.receiverType.mutability
+                    )
                 }
+            } else {
+                null
+            }
 
             val argumentPermissions = node.arguments.zip(methodType.arguments).map { (arg, type) ->
+                if (type == null) return@map null
                 exceptionReportContext(arg.tree!!) {
                     outputStore.chooseAndRemoveArgumentPermission(
-                        arg,
-                        type.mutability
+                        arg, type.mutability
                     )
                 }
             }
@@ -135,9 +131,10 @@ class BorroQTransfer(
                 Triple(x, y, z)
             }
             for ((argument, type, permission) in argumentData) {
-                when (type.releaseMode) {
+                when (type?.releaseMode) {
+                    null -> {}
                     RELEASE -> {
-                        outputStore.recombine(argument, permission)
+                        outputStore.recombine(argument, permission!!)
                     }
 
                     BORROW -> TODO("Borrow release mode")
@@ -161,44 +158,57 @@ class BorroQTransfer(
     override fun visitAssignment(
         node: AssignmentNode, input: Input
     ): Result {
+        require(!input.containsTwoStores()) { "Assignment node $node has two stores" }
+
         if (node.target !is LocalVariableNode) {
             return visitNode(node, input)
         }
 
-        fun result(value: PermissionValue, storeUpdate: BorroQStore.() -> Unit): Result {
-            return if (node.isSynthetic && input.containsTwoStores()) {
-                // This is a synthetic assignment node created for a ternary expression. In this case
-                // the `then` and `else` store are not merged.
-                val thenStore = input.getThenStore()!!
-                val elseStore = input.getElseStore()!!
-                visitNode(node, input)/*processCommonAssignment(`in`, lhs, rhs, thenStore, rhsValue)
-                processCommonAssignment(`in`, lhs, rhs, elseStore, rhsValue)
-                return ConditionalTransferResult<V?, S?>(
-                    finishValue(rhsValue, thenStore, elseStore), thenStore, elseStore
-                )*/
-            } else {
-                val store = input.getRegularStore()
-                store.storeUpdate()
-                node.regularResult(value, store)
-            }
+        fun result(value: BorroQValue, storeUpdate: BorroQStore.() -> Unit): Result {
+            val store = input.getRegularStore()
+            store.storeUpdate()
+            return node.regularResult(value, store)
         }
 
         val targetAnnotation = node.target.tree?.let {
             annotationQuery.getAssignmentLeftSideAnnotations(it)?.let(Mutability::fromAnnotations)
         }
 
-        return when (val rhsPermission = input.getValueOfSubNode(node.expression)!!) {
-            is PermissionValue.FreePermission -> {
-                val targetPermission = rhsPermission.permission.withId(Id.fromNode(node.target))
+        return when (val rhsValue = input.getValueOfSubNode(node.expression)!!) {
+            is BorroQValue.FreePermission -> {
+                val targetPermission = rhsValue.permission.withId(Id.fromNode(node.target))
                 result(targetPermission) { updatePermission(node.target, targetPermission) }
             }
 
             is IdentifiedPermission -> {
-                require(node.expression is LocalVariableNode) { "Can only split permissions from variables" }
-                val (targetPermission, remainingPermission) = rhsPermission.split(targetAnnotation)
+                val (targetPermission, remainingPermission) = rhsValue.split(targetAnnotation)
                 result(targetPermission) {
                     updatePermission(node.target, targetPermission)
-                    updatePermission(node.expression, remainingPermission)
+                    when (node.expression) {
+                        is LocalVariableNode -> updatePermission(node.expression, remainingPermission)
+                        is ThisNode -> result(rhsValue) { updateThisPermission(remainingPermission) }
+                        else -> throw IllegalStateException("Unexpected expression type ${node.expression}")
+                    }
+                }
+            }
+
+            is BorroQValue.FieldAccess -> {
+                val (usedVariablePermission, _) = rhsValue.fieldPermission.split(targetAnnotation)
+                val targetId = Id.fromNode(node.target)
+                val borrow = Borrow(
+                    context(input.regularStore) { rhsValue.access.asIdPath() },
+                    usedVariablePermission.fraction,
+                    targetId
+                )
+                val variablePermission =
+                    context(input.regularStore, memberTypeAnalysis) { rhsValue.access.permission() }?.withId(targetId)
+                if (variablePermission == null) {
+                    node.regularResult(variablePermission, input.regularStore, false)
+                } else {
+                    result(variablePermission) {
+                        updatePermission(node.target, variablePermission)
+                        addBorrow(borrow)
+                    }
                 }
             }
 
@@ -207,12 +217,44 @@ class BorroQTransfer(
 
     }
 
+    override fun visitFieldAccess(
+        node: FieldAccessNode, input: Input
+    ): Result {
+        require(!input.containsTwoStores()) { "Field access node $node has two stores" }
+
+        val fieldPermission = memberTypeAnalysis.getFieldMutability(node.element)
+            .let { if (it == Mutability.MUTABLE) Permission(Rational.ONE) else Permission(Rational.HALF) }
+
+        val receiverPath = when (node.receiver) {
+            is FieldAccessNode -> {
+                val receiverValue = input.getValueOfSubNode(node.receiver) as BorroQValue.FieldAccess
+                receiverValue.access
+            }
+
+            is ThisNode -> Path(PathRoot.ThisPathRoot)
+            is LocalVariableNode -> Path(PathRoot.LocalVariableRoot(JavaExpression.fromNode(node.receiver) as LocalVariable))
+            else -> throw IllegalStateException("Unexpected receiver type ${node.receiver}")
+        }
+
+        val path = receiverPath.with(node.element)
+
+        return node.regularResult(BorroQValue.FieldAccess(path, fieldPermission), input.regularStore, false)
+    }
+
     override fun visitLocalVariable(
         node: LocalVariableNode, input: Input
     ): Result {
-        require(!input.containsTwoStores()) { "Local variable node $node is in two stores" }
+        require(!input.containsTwoStores()) { "Local variable node $node has two stores" }
         val permission = input.regularStore.queryPermission(node)
-        return node.regularResult(permission, input.regularStore)
+        return node.regularResult(permission, input.regularStore, false)
+    }
+
+    override fun visitThis(
+        node: ThisNode, input: Input
+    ): Result {
+        require(!input.containsTwoStores()) { "Local variable node $node has two stores" }
+        val permission = input.regularStore.queryThisPermission()
+        return node.regularResult(permission, input.regularStore, false)
     }
 
     override fun visitObjectCreation(
@@ -224,8 +266,7 @@ class BorroQTransfer(
     }
 
     override fun visitReturn(
-        node: ReturnNode,
-        input: Input
+        node: ReturnNode, input: Input
     ): Result = try {
         exceptionReportContext(node.tree!!) {
             require(!input.containsTwoStores()) { "Return node $node with two stores" }
@@ -234,13 +275,11 @@ class BorroQTransfer(
 
             when (signatureType.returnMutability!!) {
                 Mutability.MUTABLE -> if (!returnPermission.isMutable) throw IncompatibleReturnPermission(
-                    returnPermission,
-                    signatureType.returnMutability
+                    returnPermission, signatureType.returnMutability
                 )
 
                 Mutability.IMMUTABLE -> if (!returnPermission.isReadable) throw IncompatibleReturnPermission(
-                    returnPermission,
-                    signatureType.returnMutability
+                    returnPermission, signatureType.returnMutability
                 )
             }
 
@@ -250,19 +289,28 @@ class BorroQTransfer(
         node.regularResult(null, input.regularStore, false)
     }
 
-    override fun visitStringLiteral(
-        node: StringLiteralNode,
-        p: Input
-    ): Result {
+    override fun visitValueLiteral(node: ValueLiteralNode, p: Input): Result {
         return node.regularResult(
-            PermissionValue.FreePermission(Permission(Rational.HALF)),
-            p.regularStore
+            BorroQValue.FreePermission(Permission(Rational.HALF)), p.regularStore
         )
     }
 
     //region Noop visit functions
     override fun visitVariableDeclaration(
-        n: VariableDeclarationNode,
+        n: VariableDeclarationNode, p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitNumericalPlus(
+        n: NumericalPlusNode,
+        p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitNumericalAddition(
+        n: NumericalAdditionNode,
         p: Input
     ): Result {
         return doNothing(n, p)
@@ -276,12 +324,6 @@ class BorroQTransfer(
 
     override fun visitMethodAccess(
         n: MethodAccessNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitThis(
-        n: ThisNode, p: Input
     ): Result {
         return doNothing(n, p)
     }

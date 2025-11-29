@@ -6,13 +6,14 @@ import de.mr_pine.borroq.types.*
 import org.checkerframework.dataflow.analysis.Store
 import org.checkerframework.dataflow.cfg.node.Node
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
+import org.checkerframework.dataflow.expression.FieldAccess
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
 
 class BorroQStore private constructor(
     private val variablePermissions: MutableMap<LocalVariable, VariablePermission>,
     private var thisPermission: VariablePermission,
-    private val borrowList: MutableList<Unit>
+    private val borrowList: MutableList<Borrow>
 ) : Store<BorroQStore> {
 
     constructor() : this(
@@ -112,6 +113,8 @@ class BorroQStore private constructor(
     fun killVariable(liveVariable: Node) {
         when (val expression = JavaExpression.fromNode(liveVariable)) {
             is LocalVariable -> {
+                if (expression.type.kind.isPrimitive) return
+
                 val permission = variablePermissions[expression]!!
                 if (permission !is IdentifiedPermission) {
                     return
@@ -127,15 +130,27 @@ class BorroQStore private constructor(
                 recombine(otherVariable, permission)
             }
 
+            is FieldAccess -> {}
+
             else -> TODO()
         }
     }
 
+    fun queryPermission(target: LocalVariable): VariablePermission? = variablePermissions[target]
+
     fun queryPermission(target: Node): VariablePermission? {
         return when (val expression = JavaExpression.fromNode(target)) {
-            is LocalVariable -> variablePermissions[expression]
+            is LocalVariable -> queryPermission(expression)
             else -> TODO()
         }
+    }
+
+    fun queryThisPermission(): VariablePermission = thisPermission
+
+    fun getBorrows(): List<Borrow> = borrowList
+
+    fun addBorrow(borrow: Borrow) {
+        borrowList.add(borrow)
     }
 
     override fun leastUpperBound(other: BorroQStore?): BorroQStore {
@@ -148,9 +163,10 @@ class BorroQStore private constructor(
         }
         val combinedThisPermission = thisPermission.combine(other.thisPermission)
 
-        require(borrowList.isEmpty() && other.borrowList.isEmpty()) { "Non-empty borrows are not yet supported" }
+        val borrows =
+            (borrowList + other.borrowList).groupBy { it.path to it.id }.values.map { it.maxBy { it.fraction } }
 
-        return BorroQStore(combinedLocalPermissions.toMutableMap(), combinedThisPermission, mutableListOf())
+        return BorroQStore(combinedLocalPermissions.toMutableMap(), combinedThisPermission, borrows.toMutableList())
     }
 
     override fun widenedUpperBound(previous: BorroQStore?): BorroQStore {
@@ -164,17 +180,21 @@ class BorroQStore private constructor(
     }
 
     override fun visualize(viz: CFGVisualizer<*, BorroQStore, *>?): String {
-        viz!! as CFGVisualizer<PermissionValue, BorroQStore, *>
+        viz!! as CFGVisualizer<BorroQValue, BorroQStore, *>
         val values = buildList {
             variablePermissions.entries.sortedBy { it.key.toString() }
                 .forEach { (variable, permission) -> add(viz.visualizeStoreLocalVar(variable, permission)) }
             add(viz.visualizeStoreThisVal(thisPermission))
         }.joinToString(viz.separator)
 
-        return if (values.trim().isEmpty()) {
+        val borrows = borrowList.joinToString(viz.separator)
+
+        val content = "$values${viz.separator}$borrows"
+
+        return if (content.trim().isEmpty()) {
             "${this::class.simpleName}()"
         } else {
-            "${this::class.simpleName}(${viz.separator}$values${viz.separator})"
+            "${this::class.simpleName}(${viz.separator}$content${viz.separator})"
         }
     }
 }

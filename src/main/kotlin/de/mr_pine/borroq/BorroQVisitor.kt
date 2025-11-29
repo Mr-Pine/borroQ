@@ -7,7 +7,7 @@ import com.sun.source.tree.MethodTree
 import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.analysis.*
 import de.mr_pine.borroq.analysis.livevariable.LiveVarTransfer
-import de.mr_pine.borroq.types.PermissionValue
+import de.mr_pine.borroq.types.BorroQValue
 import org.checkerframework.dataflow.analysis.BackwardAnalysisImpl
 import org.checkerframework.dataflow.cfg.ControlFlowGraph
 import org.checkerframework.dataflow.cfg.builder.CFGBuilder
@@ -45,12 +45,12 @@ class BorroQVisitor(
         val livenessResult = livenessAnalysis.result
 
         val methodElement = (tree as JCTree.JCMethodDecl).sym
-        val signatureTypeAnalysis = SignatureTypeAnalysis(checker)
-        val signatureType = signatureTypeAnalysis.getType(methodElement)
+        val memberTypeAnalysis = MemberTypeAnalysis(checker)
+        val signatureType = memberTypeAnalysis.getType(methodElement)
 
         val transfer = BorroQTransfer(
             signatureType,
-            signatureTypeAnalysis,
+            memberTypeAnalysis,
             livenessResult,
             checker,
             annotationQuery,
@@ -71,7 +71,7 @@ class BorroQVisitor(
         cfgVisualizer?.visualizeWithAction(cfg, cfg.entryBlock, analysis)
     }
 
-    fun createCFGVisualizer(): CFGVisualizer<PermissionValue, BorroQStore, BorroQTransfer>? {
+    fun createCFGVisualizer(): CFGVisualizer<BorroQValue, BorroQStore, BorroQTransfer>? {
         if (checker.hasOption("flowdotdir")) {
             val flowdotdir = checker.getOption("flowdotdir")
             if (flowdotdir!!.isEmpty()) {
@@ -85,7 +85,7 @@ class BorroQVisitor(
                 this["checkerName"] = checker::class.simpleName
             }
 
-            val res = DOTCFGVisualizer<PermissionValue, BorroQStore, BorroQTransfer>()
+            val res = DOTCFGVisualizer<BorroQValue, BorroQStore, BorroQTransfer>()
             res.init(args)
             return res
         } else if (checker.hasOption("cfgviz")) {

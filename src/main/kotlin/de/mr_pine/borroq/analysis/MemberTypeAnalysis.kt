@@ -23,11 +23,14 @@ import org.checkerframework.javacutil.AnnotationBuilder
 import org.checkerframework.javacutil.ElementUtils
 import javax.lang.model.element.ElementKind
 import javax.lang.model.element.ExecutableElement
+import javax.lang.model.element.VariableElement
 import javax.lang.model.type.TypeKind
 
-class SignatureTypeAnalysis(checker: BorroQChecker) {
+class MemberTypeAnalysis(checker: BorroQChecker) {
 
     private val signatureCache: MutableMap<ExecutableElement, SignatureType> = mutableMapOf()
+    private val fieldCache: MutableMap<VariableElement, Mutability> = mutableMapOf()
+
     private val elements = checker.elementUtils
 
     init {
@@ -103,6 +106,9 @@ class SignatureTypeAnalysis(checker: BorroQChecker) {
             }
 
         val parameterTypes = executable.parameters.map { arg ->
+            if (arg.asType().kind.isPrimitive) {
+                return@map null
+            }
             val typeAnnotations = arg.asType().annotationMirrors
 
             val mutability =
@@ -125,5 +131,13 @@ class SignatureTypeAnalysis(checker: BorroQChecker) {
         }
 
         return SignatureType(returnPermission, receiverType, parameterTypes)
+    }
+
+    fun getFieldMutability(field: VariableElement): Mutability? {
+        if (field.asType().kind.isPrimitive) return null
+        return fieldCache.getOrPut(field) {
+            val annotations = field.asType().annotationMirrors
+            Mutability.fromAnnotations(annotations) ?: throw IllegalStateException("No mutability for field specified")
+        }
     }
 }
