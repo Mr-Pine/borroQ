@@ -1,9 +1,11 @@
 package de.mr_pine.borroq.types
 
+import de.mr_pine.borroq.types.specifiers.Mutability
+
 open class Permission(val fraction: Rational) {
 
     /**
-     * @param hint A hint to the split of how the permission should be split. If [Mutability.MUTABLE] is specified, the whole permission is split, leaving a `0` permission
+     * @param hint A hint to the split of how the permission should be split. If [de.mr_pine.borroq.types.specifiers.Mutability.MUTABLE] is specified, the whole permission is split, leaving a `0` permission
      *
      * @return `splitPermission to remainingPermission`
      */

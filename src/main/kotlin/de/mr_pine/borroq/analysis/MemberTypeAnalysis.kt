@@ -10,9 +10,9 @@ import de.mr_pine.borroq.analysis.stub.StubManager
 import de.mr_pine.borroq.analysis.stub.StubManager.StubOptions.Companion.stubOptions
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.isStatic
-import de.mr_pine.borroq.types.Mutability
 import de.mr_pine.borroq.types.SignatureType
-import de.mr_pine.borroq.types.ReleaseMode
+import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.ReleaseMode
 import org.checkerframework.com.github.javaparser.ast.body.CallableDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
@@ -50,14 +50,12 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val simpleSignature = StubElementPrinter.print(callable)
 
         val identicalSimpleConstructors = parentElement.enclosedElements.filter {
-            it.kind ==
-                    when (callable) {
-                        is MethodDeclaration -> ElementKind.METHOD
-                        is ConstructorDeclaration -> ElementKind.CONSTRUCTOR
-                        else -> throw IllegalStateException("Unexpected callable type: ${callable.javaClass}")
-                    }
-        }
-            .filterIsInstance<ExecutableElement>().filter { it.parameters.size == callable.parameters.size }
+            it.kind == when (callable) {
+                is MethodDeclaration -> ElementKind.METHOD
+                is ConstructorDeclaration -> ElementKind.CONSTRUCTOR
+                else -> throw IllegalStateException("Unexpected callable type: ${callable.javaClass}")
+            }
+        }.filterIsInstance<ExecutableElement>().filter { it.parameters.size == callable.parameters.size }
             .filter { ElementUtils.getSimpleSignature(it) == simpleSignature }
         require(identicalSimpleConstructors.size <= 1) {
             "Multiple or no constructors with identical signature found: $simpleSignature"
@@ -66,8 +64,9 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
         fun List<AnnotationExpr>.annotationElements() = mapNotNull { annot ->
             val simpleName = annot.nameAsString
-            val typeElement = annotations[simpleName] ?: elements.getTypeElement(simpleName)
-            ?: elements.getTypeElement("java.lang.$simpleName")
+            val typeElement = annotations[simpleName] ?: elements.getTypeElement(simpleName) ?: elements.getTypeElement(
+                "java.lang.$simpleName"
+            )
             val annotation = when (annot) {
                 is MarkerAnnotationExpr -> AnnotationBuilder.fromName(elements, typeElement.qualifiedName)!!
                 else -> null // TODO: Currently there are no values, but there will be
@@ -82,7 +81,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val parameterAnnotations = it.annotations.annotationElements()
             val mutability = Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)
                 ?: return null // throw IllegalStateException("No mutability specified")
-            val releaseMode = ReleaseMode.fromAnnotations(parameterAnnotations)
+            val releaseMode = ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)
                 ?: return null // throw IllegalStateException("No release mode specified")
             SignatureType.ArgumentType(mutability, releaseMode)
         }
@@ -92,19 +91,18 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
     }
 
     private fun calculateType(executable: ExecutableElement): SignatureType {
-        val returnPermission =
-            if (executable.isConstructor) {
-                executable as Symbol
-                val annotations = executable.rawTypeAttributes.filter { it.position.type == TargetType.METHOD_RETURN }
-                Mutability.fromAnnotationsOnType(annotations, null)
-                    ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
-            } else if (executable.returnType.kind.isPrimitive || executable.returnType.kind == TypeKind.VOID) {
-                null
-            } else {
-                val annotations = executable.returnType.annotationMirrors
-                Mutability.fromAnnotationsOnType(annotations, null)
-                    ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
-            }
+        val returnPermission = if (executable.isConstructor) {
+            executable as Symbol
+            val annotations = executable.rawTypeAttributes.filter { it.position.type == TargetType.METHOD_RETURN }
+            Mutability.fromAnnotationsOnType(annotations, null)
+                ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
+        } else if (executable.returnType.kind.isPrimitive || executable.returnType.kind == TypeKind.VOID) {
+            null
+        } else {
+            val annotations = executable.returnType.annotationMirrors
+            Mutability.fromAnnotationsOnType(annotations, null)
+                ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
+        }
 
         val parameterTypes = executable.parameters.map { arg ->
             if (arg.asType().kind.isPrimitive) {
@@ -112,11 +110,12 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             }
             val typeAnnotations = arg.asType().annotationMirrors
 
-            val mutability =
-                Mutability.fromAnnotationsOnType(typeAnnotations, TypesUtils.getTypeElement(arg.asType()))
-                    ?: throw IllegalStateException("No mutability specified")
-            val releaseMode =
-                ReleaseMode.fromAnnotations(typeAnnotations) ?: throw IllegalStateException("No release mode specified")
+            val baseTypeElement = TypesUtils.getTypeElement(arg.asType())
+
+            val mutability = Mutability.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
+                ?: throw IllegalStateException("No mutability specified")
+            val releaseMode = ReleaseMode.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
+                ?: throw IllegalStateException("No release mode specified")
 
             SignatureType.ArgumentType(mutability, releaseMode)
         }
@@ -124,14 +123,13 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val receiverType = if (executable.isStatic || executable.isConstructor) {
             null
         } else {
-            val receiverMutability =
-                Mutability.fromAnnotationsOnType(
-                    executable.receiverType.annotationMirrors,
-                    TypesUtils.getTypeElement(executable.receiverType)
-                )
-                    ?: throw IllegalStateException("No receiver mutability specified specified for ${executable.simpleName}")
-            val receiverReleaseMode = ReleaseMode.fromAnnotations(executable.receiverType.annotationMirrors)
-                ?: throw IllegalStateException("No receiver release mode specified specified for ${executable.simpleName}")
+            val baseTypeElement = TypesUtils.getTypeElement(executable.receiverType)
+            val receiverMutability = Mutability.fromAnnotationsOnType(
+                executable.receiverType.annotationMirrors, baseTypeElement
+            ) ?: throw IllegalStateException("No receiver mutability specified specified for ${executable.simpleName}")
+            val receiverReleaseMode =
+                ReleaseMode.fromAnnotationsOnType(executable.receiverType.annotationMirrors, baseTypeElement)
+                    ?: throw IllegalStateException("No receiver release mode specified specified for ${executable.simpleName}")
             SignatureType.ArgumentType(receiverMutability, receiverReleaseMode)
         }
 

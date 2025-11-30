@@ -1,5 +1,7 @@
 package de.mr_pine.borroq.types
 
+import de.mr_pine.borroq.types.specifiers.Mutability
+
 class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction), VariablePermission {
 
     override val hasShallowMutability: Boolean = fraction == Rational.ONE

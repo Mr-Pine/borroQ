@@ -8,7 +8,8 @@ import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.*
-import de.mr_pine.borroq.types.ReleaseMode.*
+import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
@@ -134,12 +135,11 @@ class BorroQTransfer(
             for ((argument, type, permission) in argumentData) {
                 when (type?.releaseMode) {
                     null -> {}
-                    RELEASE -> {
+                    is SingleReleaseMode.Release if type.releaseMode.onPaths.orEmpty().isEmpty() -> {
                         outputStore.recombine(argument, permission!!)
                     }
 
-                    BORROW -> TODO("Borrow release mode")
-                    MOVE -> TODO("Move release mode")
+                    else -> TODO()
                 }
             }
 
