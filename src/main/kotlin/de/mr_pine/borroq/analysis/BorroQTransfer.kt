@@ -8,6 +8,7 @@ import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.*
+import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode
 import org.checkerframework.dataflow.analysis.*

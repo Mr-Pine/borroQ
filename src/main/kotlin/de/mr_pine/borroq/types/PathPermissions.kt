@@ -2,6 +2,7 @@ package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.analysis.BorroQStore
 import de.mr_pine.borroq.analysis.MemberTypeAnalysis
+import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.Mutability
 
 context(memberTypeAnalysis: MemberTypeAnalysis)

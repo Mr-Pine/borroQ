@@ -39,7 +39,10 @@ class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction
         result = 31 * result + id.hashCode()
         return result
     }
+
+    companion object {
+        fun Permission.withId(id: Id) = IdentifiedPermission(this.fraction, id)
+    }
 }
 
-fun Permission.withId(id: Id) = IdentifiedPermission(this.fraction, id)
 

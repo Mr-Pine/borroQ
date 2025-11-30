@@ -3,6 +3,7 @@ package de.mr_pine.borroq.analysis
 import de.mr_pine.borroq.analysis.exceptions.InsufficientPermissionException
 import de.mr_pine.borroq.analysis.exceptions.TopPermissionEncounteredException
 import de.mr_pine.borroq.types.*
+import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.Mutability
 import org.checkerframework.dataflow.analysis.Store
 import org.checkerframework.dataflow.cfg.node.Node
