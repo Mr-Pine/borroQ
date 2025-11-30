@@ -5,4 +5,5 @@ import java.lang.annotation.Target;
 
 @Target({ElementType.TYPE, ElementType.TYPE_PARAMETER, ElementType.TYPE_USE})
 public @interface Immutable {
+    String[] value() default {};
 }

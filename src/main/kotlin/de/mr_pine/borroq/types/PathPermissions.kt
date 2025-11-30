@@ -6,9 +6,9 @@ import de.mr_pine.borroq.analysis.MemberTypeAnalysis
 context(memberTypeAnalysis: MemberTypeAnalysis)
 fun IdPath.fieldPermission(): Permission? {
     val mutability = memberTypeAnalysis.getFieldMutability(tail.fields.last()) ?: return null
-    return when (mutability) {
-        Mutability.MUTABLE -> Permission(Rational.ONE)
-        Mutability.IMMUTABLE -> Permission(Rational.HALF)
+    return when (mutability) { // TODO: Sanity check
+        is Mutability.Mutable -> Permission(Rational.ONE)
+        is Mutability.Immutable -> Permission(Rational.HALF)
     }
 }
 

@@ -1,32 +1,57 @@
 package de.mr_pine.borroq.types
 
-import de.mr_pine.borroq.qual.mutability.Immutable
-import de.mr_pine.borroq.qual.mutability.Mutable
 import org.checkerframework.javacutil.AnnotationUtils
+import org.checkerframework.javacutil.ElementUtils
+import org.checkerframework.javacutil.TypesUtils
 import javax.lang.model.element.AnnotationMirror
+import javax.lang.model.element.AnnotationValue
+import javax.lang.model.element.TypeElement
+import javax.lang.model.element.VariableElement
 
-enum class Mutability(val permissionString: String) {
-    MUTABLE("mutable"), IMMUTABLE("readable");
+sealed interface Mutability {
+    val permissionString: String
+
+    data class Mutable(val onPaths: List<PathTail>?) : Mutability {
+        override val permissionString = "mutable"
+    }
+
+    data class Immutable(val onPaths: List<PathTail>?) : Mutability {
+        override val permissionString = "readable"
+    }
 
     companion object {
-        fun fromAnnotations(annotations: Collection<AnnotationMirror>): Mutability? {
-            val mutableAnnotation = AnnotationUtils.getAnnotationByClass(annotations, Mutable::class.java)
-            val immutableAnnotation = AnnotationUtils.getAnnotationByClass(annotations, Immutable::class.java)
+        fun fromAnnotationsOnType(annotations: Collection<AnnotationMirror>, type: TypeElement?): Mutability? {
+            val mutableAnnotation =
+                AnnotationUtils.getAnnotationByClass(annotations, de.mr_pine.borroq.qual.mutability.Mutable::class.java)
+            val immutableAnnotation = AnnotationUtils.getAnnotationByClass(
+                annotations,
+                de.mr_pine.borroq.qual.mutability.Immutable::class.java
+            )
 
             if (mutableAnnotation != null && immutableAnnotation != null) {
                 throw IllegalStateException("Element is annotated with both @Mutable and @Immutable")
             }
 
-            return if (mutableAnnotation != null) MUTABLE
-            else if (immutableAnnotation != null) IMMUTABLE
-            else null
-        }
+            val annotation = mutableAnnotation ?: immutableAnnotation ?: return null
 
-        object Defaults {
-            val split = IMMUTABLE
-            val returnType = IMMUTABLE
-            val parameter = IMMUTABLE
-        }
+            val paths = (annotation.elementValues.values.firstOrNull()?.value as List<*>?).orEmpty()
 
+            if (paths.isNotEmpty() && type == null) {
+                throw IllegalStateException("Paths are specified on return type")
+            }
+
+            val onPaths = paths.map { (it as AnnotationValue).value as String }.map {
+                val fields =
+                    it.removePrefix(".").split(".").runningFold(null) { previousField: VariableElement?, fieldName ->
+                        val baseType = previousField?.asType()?.let(TypesUtils::getTypeElement) ?: type!!
+
+                        ElementUtils.findFieldInType(baseType, fieldName)
+                    }
+                PathTail(fields.filterNotNull())
+            }.takeIf { it.isNotEmpty() }
+
+            return if (mutableAnnotation != null) Mutable(onPaths)
+            else Immutable(onPaths)
+        }
     }
 }

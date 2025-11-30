@@ -12,7 +12,23 @@ public interface Fields {
         @Immutable
         B y;
 
-        @Mutable A() {
+        @Mutable
+        B getXMutable(@Mutable(".x") @Borrow(".x")A this) {
+            return this.x;
+        }
+
+        @Immutable
+        B getX(@Immutable(".x") @Borrow(".x")A this) {
+            return this.x;
+        }
+
+        @Immutable
+        B getY(@Immutable(".y") @Borrow(".y")A this) {
+            return this.y;
+        }
+
+        @Mutable
+        A() {
             this.x = new B(0);
             this.y = new B(1);
         }
@@ -33,7 +49,8 @@ public interface Fields {
     class B {
         int value;
 
-        @Mutable B(int value) {
+        @Mutable
+        B(int value) {
             this.value = value;
         }
 

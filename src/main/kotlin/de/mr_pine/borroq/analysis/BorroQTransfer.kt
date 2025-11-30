@@ -6,10 +6,7 @@ import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
 import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
-import de.mr_pine.borroq.analysis.exceptions.IncompatibleReturnPermission
-import de.mr_pine.borroq.analysis.exceptions.IncompatibleSuperConstructorMutability
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
-import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode.*
 import org.checkerframework.dataflow.analysis.*
@@ -17,6 +14,7 @@ import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
+import org.checkerframework.javacutil.TypesUtils
 import kotlin.contracts.ExperimentalContracts
 
 private typealias Result = TransferResult<BorroQValue, BorroQStore>
@@ -94,11 +92,13 @@ class BorroQTransfer(
         try {
             val methodType = memberTypeAnalysis.getType(node.target.method)
 
+            /* TODO: Reintroduce
             if (node.target.method.isConstructor && methodType.returnMutability == Mutability.IMMUTABLE && signatureType.returnMutability == Mutability.MUTABLE) exceptionReportContext(
                 node.tree!!
             ) {
                 throw IncompatibleSuperConstructorMutability()
             }
+             */
 
             val outputStore = input.regularStore
 
@@ -172,7 +172,7 @@ class BorroQTransfer(
         }
 
         val targetAnnotation = node.target.tree?.let {
-            annotationQuery.getAssignmentLeftSideAnnotations(it)?.let(Mutability::fromAnnotations)
+            annotationQuery.getAssignmentLeftSideAnnotations(it)?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(node.target.type)) }
         }
 
         return when (val rhsValue = input.getValueOfSubNode(node.expression)!!) {
@@ -224,7 +224,7 @@ class BorroQTransfer(
         require(!input.containsTwoStores()) { "Field access node $node has two stores" }
 
         val fieldPermission = memberTypeAnalysis.getFieldMutability(node.element)
-            .let { if (it == Mutability.MUTABLE) Permission(Rational.ONE) else Permission(Rational.HALF) }
+            .let { if (it is Mutability.Mutable) Permission(Rational.ONE) else Permission(Rational.HALF) } // TODO: Correctly handle restrictions
 
         val receiverPath = when (node.receiver) {
             is FieldAccessNode -> {
@@ -274,6 +274,7 @@ class BorroQTransfer(
             if (node.result == null) return node.regularResult(null, input.regularStore, false)
             val returnPermission = input.getValueOfSubNode(node.result)!!
 
+            /* TODO: Reintroduce with correct restriction handling
             when (signatureType.returnMutability!!) {
                 Mutability.MUTABLE -> if (!returnPermission.hasShallowMutability) throw IncompatibleReturnPermission(
                     returnPermission, signatureType.returnMutability
@@ -283,7 +284,7 @@ class BorroQTransfer(
                     returnPermission, signatureType.returnMutability
                 )
             }
-
+             */
             node.regularResult(null, input.regularStore, false)
         }
     } catch (_: BorroQReportedException) {

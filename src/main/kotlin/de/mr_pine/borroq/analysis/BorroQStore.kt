@@ -44,12 +44,12 @@ class BorroQStore private constructor(
             is VariablePermission.Top -> throw TopPermissionEncounteredException(argument.toString())
             is IdentifiedPermission -> {
                 when (parameterMutability) {
-                    Mutability.MUTABLE -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
-                        argument.toString(), Mutability.MUTABLE, availablePermission
+                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
+                        argument.toString(), parameterMutability, availablePermission
                     )
 
-                    Mutability.IMMUTABLE -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
-                        argument.toString(), Mutability.IMMUTABLE, availablePermission
+                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
+                        argument.toString(), parameterMutability, availablePermission
                     )
                 }
 
@@ -70,12 +70,12 @@ class BorroQStore private constructor(
             is VariablePermission.Top -> throw TopPermissionEncounteredException("this")
             is IdentifiedPermission -> {
                 when (mutability) {
-                    Mutability.MUTABLE -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
-                        "this", Mutability.MUTABLE, availablePermission
+                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
+                        "this", mutability, availablePermission
                     )
 
-                    Mutability.IMMUTABLE -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
-                        "this", Mutability.IMMUTABLE, availablePermission
+                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
+                        "this", mutability, availablePermission
                     )
                 }
 

@@ -8,9 +8,9 @@ open class Permission(val fraction: Rational) {
      * @return `splitPermission to remainingPermission`
      */
     open fun split(hint: Mutability?): Pair<Permission, Permission> {
-        val splitFraction = when (hint ?: Mutability.Companion.Defaults.split) {
-            Mutability.IMMUTABLE -> this.fraction / 2
-            Mutability.MUTABLE -> this.fraction
+        val splitFraction = when (hint!!) {
+            is Mutability.Mutable -> this.fraction / 2
+            is Mutability.Immutable -> this.fraction
         }
         return Permission(splitFraction) to Permission(fraction - splitFraction)
     }
