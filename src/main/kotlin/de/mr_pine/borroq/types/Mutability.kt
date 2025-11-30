@@ -10,12 +10,13 @@ import javax.lang.model.element.VariableElement
 
 sealed interface Mutability {
     val permissionString: String
+    val onPaths: List<PathTail>?
 
-    data class Mutable(val onPaths: List<PathTail>?) : Mutability {
+    data class Mutable(override val onPaths: List<PathTail>?) : Mutability {
         override val permissionString = "mutable"
     }
 
-    data class Immutable(val onPaths: List<PathTail>?) : Mutability {
+    data class Immutable(override val onPaths: List<PathTail>?) : Mutability {
         override val permissionString = "readable"
     }
 
