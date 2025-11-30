@@ -19,12 +19,14 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
             get() = permission.fraction > Rational.ZERO
     }
 
-    data class FieldAccess(val access: Path, val fieldPermission: Permission): BorroQValue
+    data class FieldAccess(val access: Path, val fieldPermission: Permission) : BorroQValue
 
     data object Primitive : BorroQValue {
         override val hasShallowMutability: Boolean get() = false
         override val hasShallowReadability: Boolean get() = true
     }
-}
 
-fun Permission.asValue() = BorroQValue.FreePermission(this)
+    companion object {
+        fun Permission.asValue() = BorroQValue.FreePermission(this)
+    }
+}
