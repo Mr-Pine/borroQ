@@ -36,7 +36,7 @@ fun Path.permission(): Permission? {
         return rootPermission()
     }
     val prefixPermission =
-        copy(tail = tail.copy(fields = tail.fields.dropLast(1))).permission()!! // "Inner" fields aren't primitive
+        copy(tail = PathTail(tail.fields.dropLast(1))).permission()!! // "Inner" fields aren't primitive
     val field = context(store.getBorrows()) { borrowedFieldPermission() } ?: return null
     return Permission(prefixPermission.fraction * field.fraction)
 }

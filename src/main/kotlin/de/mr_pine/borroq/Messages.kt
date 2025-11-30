@@ -6,4 +6,5 @@ object Messages {
     const val TOP_PERMISSION_ENCOUNTERED = "permission.top"
     const val INCOMPATIBLE_SUPER_CONSTRUCTOR_MUTABILITY = "permission.super.incompatible"
     const val INCOMPATIBLE_RETURN_PERMISSION = "permission.return.incompatible"
+    const val IMMUTABLE_FIELD_IN_MUTABLE_ANNOTATION = "annotation.mutable.immutable.field"
 }

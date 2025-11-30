@@ -12,15 +12,17 @@ import org.checkerframework.dataflow.expression.FieldAccess
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
 
-class BorroQStore private constructor(
+/**
+ * Stores the permissions of local variables and the this receiver as well as the borrow list.
+ * @param variablePermissions A map of local variables to their permissions.
+ * @param thisPermission The permission of the this receiver. Null if the method is static/a constructor.
+ * @param borrowList A list of borrows.
+ */
+class BorroQStore constructor(
     private val variablePermissions: MutableMap<LocalVariable, VariablePermission>,
-    private var thisPermission: VariablePermission,
+    private var thisPermission: VariablePermission?,
     private val borrowList: MutableList<Borrow>
 ) : Store<BorroQStore> {
-
-    constructor() : this(
-        mutableMapOf(), IdentifiedPermission(Rational.ONE, Id("this")), mutableListOf()
-    )
 
     override fun copy() = BorroQStore(variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
 
@@ -83,6 +85,8 @@ class BorroQStore private constructor(
 
                 availablePermission.split(mutability)
             }
+
+            null -> throw IllegalStateException("No this permission available")
         }
 
         updateThisPermission(remaining)
@@ -147,7 +151,7 @@ class BorroQStore private constructor(
         }
     }
 
-    fun queryThisPermission(): VariablePermission = thisPermission
+    fun queryThisPermission(): VariablePermission? = thisPermission
 
     fun getBorrows(): List<Borrow> = borrowList
 
@@ -163,7 +167,7 @@ class BorroQStore private constructor(
 
             permissionA.combine(permissionB)
         }
-        val combinedThisPermission = thisPermission.combine(other.thisPermission)
+        val combinedThisPermission = other.thisPermission?.let { otherThis -> thisPermission?.combine(otherThis) }
 
         val borrows =
             (borrowList + other.borrowList).groupBy { it.path to it.id }.values.map { it.maxBy { it.fraction } }
@@ -186,7 +190,9 @@ class BorroQStore private constructor(
         val values = buildList {
             variablePermissions.entries.sortedBy { it.key.toString() }
                 .forEach { (variable, permission) -> add(viz.visualizeStoreLocalVar(variable, permission)) }
-            add(viz.visualizeStoreThisVal(thisPermission))
+            if (thisPermission != null) {
+                add(viz.visualizeStoreThisVal(thisPermission))
+            }
         }.joinToString(viz.separator)
 
         val borrows = borrowList.joinToString(viz.separator)

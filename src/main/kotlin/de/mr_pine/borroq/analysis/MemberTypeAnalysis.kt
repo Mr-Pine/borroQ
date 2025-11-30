@@ -83,7 +83,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
                 ?: return null // throw IllegalStateException("No mutability specified")
             val releaseMode = ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)
                 ?: return null // throw IllegalStateException("No release mode specified")
-            SignatureType.ArgumentType(mutability, releaseMode)
+            SignatureType.ParameterType(mutability, releaseMode)
         }
         val signatureType = SignatureType(returnMutability, null, parameterTypes)
         signatureCache[element] = signatureType
@@ -117,7 +117,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val releaseMode = ReleaseMode.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
                 ?: throw IllegalStateException("No release mode specified")
 
-            SignatureType.ArgumentType(mutability, releaseMode)
+            SignatureType.ParameterType(mutability, releaseMode)
         }
 
         val receiverType = if (executable.isStatic || executable.isConstructor) {
@@ -130,7 +130,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val receiverReleaseMode =
                 ReleaseMode.fromAnnotationsOnType(executable.receiverType.annotationMirrors, baseTypeElement)
                     ?: throw IllegalStateException("No receiver release mode specified specified for ${executable.simpleName}")
-            SignatureType.ArgumentType(receiverMutability, receiverReleaseMode)
+            SignatureType.ParameterType(receiverMutability, receiverReleaseMode)
         }
 
         return SignatureType(returnPermission, receiverType, parameterTypes)

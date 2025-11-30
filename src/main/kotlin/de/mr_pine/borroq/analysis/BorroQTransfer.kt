@@ -17,7 +17,10 @@ import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
+import org.checkerframework.javacutil.ElementUtils
+import org.checkerframework.javacutil.TreeUtils
 import org.checkerframework.javacutil.TypesUtils
+import javax.lang.model.element.TypeElement
 import kotlin.contracts.ExperimentalContracts
 
 private typealias Result = TransferResult<BorroQValue, BorroQStore>
@@ -59,10 +62,79 @@ class BorroQTransfer(
     }
 
     override fun initialStore(
-        underlyingAST: UnderlyingAST?, parameters: List<LocalVariableNode?>?
+        underlyingAST: UnderlyingAST, parameters: List<LocalVariableNode>
     ): BorroQStore {
-        // TODO: Correctly initialize store
-        return BorroQStore()
+        val parameterPermissions = parameters.zip(signatureType.parameters).mapNotNull { (parameter, parameterType) ->
+            val permission = when (parameterType?.mutability ?: return@mapNotNull null) {
+                is Mutability.Mutable -> Permission(Rational.ONE)
+                is Mutability.Immutable -> Permission(Rational.HALF)
+            }
+            val localVariable = JavaExpression.fromNode(parameter) as LocalVariable
+            localVariable to (permission.withId(Id.fromNode(parameter)) as VariablePermission)
+        }.toMap().toMutableMap()
+
+        context(mutability: Mutability, paramSource: Tree) fun calculateBorrows(
+            borrowBase: IdPath, baseType: TypeElement, paths: List<PathTail>
+        ): List<Borrow> {
+            val typeFields = ElementUtils.getAllFieldsIn(baseType, checker.elementUtils)
+            val unmentioned = typeFields.filter { field -> paths.none { it.fields.first() == field } }
+            val unmentionedBorrows = unmentioned.map { field ->
+                val fraction = memberTypeAnalysis.getFieldMutability(field)
+                    .let { if (it is Mutability.Mutable) Rational.ONE else Rational.HALF }
+                Borrow(borrowBase.with(field), fraction, Borrow.Identifier.Dummy)
+            }
+
+            val mentionedBorrows = paths.groupBy { it.fields.first() }.flatMap { (field, paths) ->
+                if (paths.size == 1 && paths.single().fields.size == 1) {
+                    if (memberTypeAnalysis.getFieldMutability(field) !is Mutability.Mutable && mutability is Mutability.Mutable) checker.reportWarning(
+                        paramSource, Messages.IMMUTABLE_FIELD_IN_MUTABLE_ANNOTATION, field.simpleName
+                    )
+                    return@flatMap emptyList<Borrow>()
+                }
+                val trimmedPaths = paths.map { PathTail(it.fields.drop(1)) }
+                val updatedBase = borrowBase.with(field)
+                val fieldType = TypesUtils.getTypeElement(field.asType())!!
+
+                return calculateBorrows(updatedBase, fieldType, trimmedPaths)
+            }
+
+            return unmentionedBorrows + mentionedBorrows
+        }
+
+        val parameterBorrows = parameters.zip(signatureType.parameters).flatMap { (parameter, parameterType) ->
+            if (parameterType?.mutability?.onPaths != null) context(parameterType.mutability, parameter.tree!!) {
+                val baseType = TypesUtils.getTypeElement(parameter.type)!!
+                calculateBorrows(IdPath(Id.fromNode(parameter)), baseType, parameterType.mutability.onPaths!!)
+            } else {
+                emptyList()
+            }
+        }
+
+        val methodAST = underlyingAST as UnderlyingAST.CFGMethod
+        val receiverPermission = when (signatureType.receiverType?.mutability) {
+            null -> if (TreeUtils.isConstructor(methodAST.method)) Permission(Rational.ONE) else null
+
+            is Mutability.Mutable -> Permission(Rational.ONE)
+            is Mutability.Immutable -> Permission(Rational.HALF)
+        }?.withId(Id("this"))
+        val receiverBorrows = if (signatureType.receiverType != null) run {
+            val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
+
+            val onPaths = signatureType.receiverType!!.mutability.onPaths ?: return@run emptyList()
+
+            context(
+                signatureType.receiverType.mutability, methodAST.method.receiverParameter ?: methodAST.method!!
+            ) { calculateBorrows(IdPath(Id("this")), baseType, onPaths) }
+        } else if (TreeUtils.isConstructor(methodAST.method)) {
+            val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
+            context(
+                Mutability.Mutable(emptyList()), methodAST.method.receiverParameter ?: methodAST.method!!
+            ) { calculateBorrows(IdPath(Id("this")), baseType, emptyList()) }
+        } else emptyList()
+
+        return BorroQStore(
+            parameterPermissions, receiverPermission, (parameterBorrows + receiverBorrows).toMutableList()
+        )
     }
 
     fun doNothing(
@@ -121,7 +193,7 @@ class BorroQTransfer(
                 null
             }
 
-            val argumentPermissions = node.arguments.zip(methodType.arguments).map { (arg, type) ->
+            val argumentPermissions = node.arguments.zip(methodType.parameters).map { (arg, type) ->
                 if (type == null) return@map null
                 exceptionReportContext(arg.tree!!) {
                     outputStore.chooseAndRemoveArgumentPermission(
@@ -130,7 +202,7 @@ class BorroQTransfer(
                 }
             }
 
-            val argumentData = node.arguments.zip(methodType.arguments).zip(argumentPermissions).map { (p, z) ->
+            val argumentData = node.arguments.zip(methodType.parameters).zip(argumentPermissions).map { (p, z) ->
                 val (x, y) = p
                 Triple(x, y, z)
             }
@@ -174,7 +246,8 @@ class BorroQTransfer(
         }
 
         val targetAnnotation = node.target.tree?.let {
-            annotationQuery.getAssignmentLeftSideAnnotations(it)?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(node.target.type)) }
+            annotationQuery.getAssignmentLeftSideAnnotations(it)
+                ?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(node.target.type)) }
         }
 
         return when (val rhsValue = input.getValueOfSubNode(node.expression)!!) {
@@ -307,15 +380,13 @@ class BorroQTransfer(
     }
 
     override fun visitNumericalPlus(
-        n: NumericalPlusNode,
-        p: Input
+        n: NumericalPlusNode, p: Input
     ): Result {
         return doNothing(n, p)
     }
 
     override fun visitNumericalAddition(
-        n: NumericalAdditionNode,
-        p: Input
+        n: NumericalAdditionNode, p: Input
     ): Result {
         return doNothing(n, p)
     }

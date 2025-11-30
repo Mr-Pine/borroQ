@@ -17,6 +17,10 @@ public interface Fields {
             return this.x;
         }
 
+        static @Mutable B getXMutable2(@Mutable(".x") @Borrow(".x") A a) {
+            return a.x;
+        }
+
         @Immutable
         B getX(@Immutable(".x") @Borrow(".x")A this) {
             return this.x;

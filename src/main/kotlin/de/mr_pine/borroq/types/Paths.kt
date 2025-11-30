@@ -17,7 +17,8 @@ sealed interface PathRoot {
     }
 }
 
-data class PathTail(val fields: List<VariableElement>)
+@JvmInline
+value class PathTail(val fields: List<VariableElement>)
 
 data class Path(val root: PathRoot, val tail: PathTail) {
     constructor(root: PathRoot) : this(root, PathTail(emptyList()))
@@ -25,7 +26,7 @@ data class Path(val root: PathRoot, val tail: PathTail) {
     context(store: BorroQStore)
     fun asIdPath() = IdPath(root.toId(), tail)
 
-    fun with(field: VariableElement) = Path(root, tail.copy(fields = tail.fields + field))
+    fun with(field: VariableElement) = Path(root, PathTail(tail.fields + field))
 }
 
 data class IdPath(val id: Id, val tail: PathTail) {
@@ -35,5 +36,5 @@ data class IdPath(val id: Id, val tail: PathTail) {
         id == other.id && tail.fields.size <= other.tail.fields.size && tail.fields.zip(other.tail.fields)
             .all { (a, b) -> a == b }
 
-    fun with(field: VariableElement) = IdPath(id, tail.copy(fields = tail.fields + field))
+    fun with(field: VariableElement) = IdPath(id, PathTail(tail.fields + field))
 }
