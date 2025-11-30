@@ -12,7 +12,7 @@ import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.isStatic
 import de.mr_pine.borroq.types.Mutability
 import de.mr_pine.borroq.types.SignatureType
-import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode
+import de.mr_pine.borroq.types.ReleaseMode
 import org.checkerframework.com.github.javaparser.ast.body.CallableDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration

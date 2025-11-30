@@ -8,7 +8,7 @@ import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.*
-import de.mr_pine.borroq.types.SignatureType.ArgumentType.Companion.ReleaseMode.*
+import de.mr_pine.borroq.types.ReleaseMode.*
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
