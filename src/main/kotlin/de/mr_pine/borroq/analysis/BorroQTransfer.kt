@@ -274,11 +274,11 @@ class BorroQTransfer(
             val returnPermission = input.getValueOfSubNode(node.result)!!
 
             when (signatureType.returnMutability!!) {
-                Mutability.MUTABLE -> if (!returnPermission.isMutable) throw IncompatibleReturnPermission(
+                Mutability.MUTABLE -> if (!returnPermission.hasShallowMutability) throw IncompatibleReturnPermission(
                     returnPermission, signatureType.returnMutability
                 )
 
-                Mutability.IMMUTABLE -> if (!returnPermission.isReadable) throw IncompatibleReturnPermission(
+                Mutability.IMMUTABLE -> if (!returnPermission.hasShallowReadability) throw IncompatibleReturnPermission(
                     returnPermission, signatureType.returnMutability
                 )
             }

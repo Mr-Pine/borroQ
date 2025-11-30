@@ -2,8 +2,8 @@ package de.mr_pine.borroq.types
 
 class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction), VariablePermission {
 
-    override val isMutable: Boolean = fraction == Rational.ONE
-    override val isReadable: Boolean = fraction.numerator != 0
+    override val hasShallowMutability: Boolean = fraction == Rational.ONE
+    override val hasShallowReadability: Boolean = !fraction.isZero()
 
     override fun split(hint: Mutability?): Pair<IdentifiedPermission, IdentifiedPermission> {
         val (a, b) = super.split(hint)

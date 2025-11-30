@@ -44,11 +44,11 @@ class BorroQStore private constructor(
             is VariablePermission.Top -> throw TopPermissionEncounteredException(argument.toString())
             is IdentifiedPermission -> {
                 when (parameterMutability) {
-                    Mutability.MUTABLE -> if (!availablePermission.isMutable) throw InsufficientPermissionException(
+                    Mutability.MUTABLE -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
                         argument.toString(), Mutability.MUTABLE, availablePermission
                     )
 
-                    Mutability.IMMUTABLE -> if (!availablePermission.isReadable) throw InsufficientPermissionException(
+                    Mutability.IMMUTABLE -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
                         argument.toString(), Mutability.IMMUTABLE, availablePermission
                     )
                 }
@@ -70,11 +70,11 @@ class BorroQStore private constructor(
             is VariablePermission.Top -> throw TopPermissionEncounteredException("this")
             is IdentifiedPermission -> {
                 when (mutability) {
-                    Mutability.MUTABLE -> if (!availablePermission.isMutable) throw InsufficientPermissionException(
+                    Mutability.MUTABLE -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
                         "this", Mutability.MUTABLE, availablePermission
                     )
 
-                    Mutability.IMMUTABLE -> if (!availablePermission.isReadable) throw InsufficientPermissionException(
+                    Mutability.IMMUTABLE -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
                         "this", Mutability.IMMUTABLE, availablePermission
                     )
                 }

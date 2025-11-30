@@ -1,6 +1,7 @@
 package de.mr_pine.borroq.types
 
 data class Rational(val numerator: Int, val denominator: Int) : Comparable<Rational> {
+
     override fun toString() = "$numerator/$denominator"
 
     operator fun plus(other: Rational) = Rational(
@@ -17,6 +18,8 @@ data class Rational(val numerator: Int, val denominator: Int) : Comparable<Ratio
 
     operator fun div(other: Rational) = this * other.inverse()
     operator fun div(other: Int) = this / other.asRational()
+
+    fun isZero() = numerator == 0
 
 
     fun reduced(): Rational {

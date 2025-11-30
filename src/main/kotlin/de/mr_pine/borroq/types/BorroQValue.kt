@@ -7,23 +7,23 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
         TODO("Not yet implemented")
     }
 
-    val isMutable: Boolean
+    val hasShallowMutability: Boolean
         get() = false
-    val isReadable: Boolean
+    val hasShallowReadability: Boolean
         get() = false
 
     data class FreePermission(val permission: Permission) : BorroQValue {
-        override val isMutable: Boolean
+        override val hasShallowMutability: Boolean
             get() = permission.fraction == Rational.ONE
-        override val isReadable: Boolean
+        override val hasShallowReadability: Boolean
             get() = permission.fraction > Rational.ZERO
     }
 
     data class FieldAccess(val access: Path, val fieldPermission: Permission): BorroQValue
 
     data object Primitive : BorroQValue {
-        override val isMutable: Boolean get() = false
-        override val isReadable: Boolean get() = true
+        override val hasShallowMutability: Boolean get() = false
+        override val hasShallowReadability: Boolean get() = true
     }
 }
 
