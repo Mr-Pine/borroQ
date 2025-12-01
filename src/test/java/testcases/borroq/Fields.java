@@ -39,6 +39,17 @@ public interface Fields {
 
 
         void main(@Mutable @Release A this) {
+            @Mutable B b1 = this.getXMutable();
+            @Immutable B b2 = new B(1);
+            b1.mutable();
+            @Immutable A a2 = this;
+            @Immutable B b3 = a2.getX();
+            b3.immutable();
+            @Immutable B b4 = this.getY();
+            b4.immutable();
+        }
+
+        void mainDirect(@Mutable @Release A this) {
             @Mutable B b1 = this.x;
             @Immutable B b2 = new B(1);
             b1.mutable();

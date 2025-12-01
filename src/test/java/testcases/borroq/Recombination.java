@@ -8,7 +8,7 @@ public interface Recombination {
     }
 
     static void recombine() {
-        @Mutable Object a =  new Object();
+        @Mutable Object a = new Object();
         @Mutable Object b = a;
 
         use(b);

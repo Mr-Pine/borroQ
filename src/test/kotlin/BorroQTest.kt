@@ -10,7 +10,7 @@ class BorroQTest(testFile: File?) : CheckerFrameworkPerFileTest(
     testFile,
     BorroQChecker::class.java,
     "de/mr_pine/borroq",
-    "-Adetailedmsgtext",
+    //"-Adetailedmsgtext",
     //"-Astrictness=allow-unknown",
     "-Astubs=stubs/",
     "-Aflowdotdir=build/cfgraphs/",

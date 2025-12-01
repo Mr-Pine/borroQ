@@ -12,11 +12,15 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
     val hasShallowReadability: Boolean
         get() = false
 
-    data class FreePermission(val permission: Permission) : BorroQValue {
+    data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
         override val hasShallowMutability: Boolean
             get() = permission.fraction == Rational.ONE
         override val hasShallowReadability: Boolean
             get() = permission.fraction > Rational.ZERO
+
+        data class FreeBorrow(val path: IdPath, val fraction: Rational) {
+            fun toBorrow(id: Borrow.Identifier) = Borrow(path, fraction, id)
+        }
     }
 
     data class FieldAccess(val access: Path, val fieldPermission: Permission) : BorroQValue
@@ -24,9 +28,5 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
     data object Primitive : BorroQValue {
         override val hasShallowMutability: Boolean get() = false
         override val hasShallowReadability: Boolean get() = true
-    }
-
-    companion object {
-        fun Permission.asValue() = BorroQValue.FreePermission(this)
     }
 }

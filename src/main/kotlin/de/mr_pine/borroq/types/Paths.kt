@@ -1,6 +1,11 @@
 package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.analysis.BorroQStore
+import org.checkerframework.dataflow.cfg.node.FieldAccessNode
+import org.checkerframework.dataflow.cfg.node.LocalVariableNode
+import org.checkerframework.dataflow.cfg.node.Node
+import org.checkerframework.dataflow.cfg.node.ThisNode
+import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
 import javax.lang.model.element.VariableElement
 
@@ -27,6 +32,24 @@ data class Path(val root: PathRoot, val tail: PathTail) {
     fun asIdPath() = IdPath(root.toId(), tail)
 
     fun with(field: VariableElement) = Path(root, PathTail(tail.fields + field))
+    fun with(tail: PathTail) = Path(root, PathTail(this.tail.fields + tail.fields))
+
+    companion object {
+        fun fromNode(node: Node): Path = when (node) {
+            is LocalVariableNode -> {
+                val variable = JavaExpression.fromNode(node) as LocalVariable
+                Path(PathRoot.LocalVariableRoot(variable))
+            }
+
+            is ThisNode -> Path(PathRoot.ThisPathRoot)
+            is FieldAccessNode -> {
+                val basePath = fromNode(node.receiver)
+                basePath.with(node.element)
+            }
+
+            else -> throw IllegalStateException("Unexpected node type ${node.javaClass}")
+        }
+    }
 }
 
 data class IdPath(val id: Id, val tail: PathTail) {

@@ -1,6 +1,6 @@
 package de.mr_pine.borroq.analysis
 
-import de.mr_pine.borroq.analysis.exceptions.InsufficientPermissionException
+import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionException
 import de.mr_pine.borroq.analysis.exceptions.TopPermissionEncounteredException
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
@@ -37,8 +37,8 @@ class BorroQStore constructor(
         thisPermission = permission
     }
 
-    @Throws(InsufficientPermissionException::class, TopPermissionEncounteredException::class)
-    fun chooseAndRemoveArgumentPermission(argument: Node, parameterMutability: Mutability): VariablePermission {
+    @Throws(InsufficientShallowPermissionException::class, TopPermissionEncounteredException::class)
+    fun chooseAndRemoveArgumentPermission(argument: Node, shallowMutability: Mutability): VariablePermission {
         val availablePermission = when (val expression = JavaExpression.fromNode(argument)) {
             is LocalVariable -> variablePermissions[expression]!!
             else -> TODO("non local-var argument")
@@ -47,17 +47,17 @@ class BorroQStore constructor(
         val (split, remaining) = when (availablePermission) {
             is VariablePermission.Top -> throw TopPermissionEncounteredException(argument.toString())
             is IdentifiedPermission -> {
-                when (parameterMutability) {
-                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
-                        argument.toString(), parameterMutability, availablePermission
+                when (shallowMutability) {
+                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientShallowPermissionException(
+                        argument.toString(), shallowMutability, availablePermission
                     )
 
-                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
-                        argument.toString(), parameterMutability, availablePermission
+                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientShallowPermissionException(
+                        argument.toString(), shallowMutability, availablePermission
                     )
                 }
 
-                availablePermission.split(parameterMutability)
+                availablePermission.split(shallowMutability)
             }
         }
 
@@ -66,7 +66,7 @@ class BorroQStore constructor(
         return split
     }
 
-    @Throws(InsufficientPermissionException::class, TopPermissionEncounteredException::class)
+    @Throws(InsufficientShallowPermissionException::class, TopPermissionEncounteredException::class)
     fun chooseAndRemoveThisReceiverPermission(mutability: Mutability): VariablePermission {
         val availablePermission = thisPermission
 
@@ -74,11 +74,11 @@ class BorroQStore constructor(
             is VariablePermission.Top -> throw TopPermissionEncounteredException("this")
             is IdentifiedPermission -> {
                 when (mutability) {
-                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientPermissionException(
+                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientShallowPermissionException(
                         "this", mutability, availablePermission
                     )
 
-                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientPermissionException(
+                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientShallowPermissionException(
                         "this", mutability, availablePermission
                     )
                 }
@@ -154,7 +154,8 @@ class BorroQStore constructor(
     fun queryThisPermission(): VariablePermission? = thisPermission
 
     fun hasShallowMutability(id: Id): Boolean {
-        return variablePermissions.values.all { it is IdentifiedPermission && it.id == id && it.hasShallowMutability }
+        return variablePermissions.values.filter { (it as? IdentifiedPermission)?.fraction?.isZero() != true }
+            .all { it is IdentifiedPermission && it.id == id && it.hasShallowMutability }
     }
 
     fun localPermissionSum(id: Id) =
@@ -167,6 +168,10 @@ class BorroQStore constructor(
 
     fun addBorrow(borrow: Borrow) {
         borrowList.add(borrow)
+    }
+
+    fun removeBorrow(borrow: Borrow) {
+        borrowList.remove(borrow)
     }
 
     override fun leastUpperBound(other: BorroQStore?): BorroQStore {
