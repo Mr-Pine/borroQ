@@ -9,8 +9,12 @@ import javax.lang.model.element.AnnotationMirror
 import javax.lang.model.element.TypeElement
 
 sealed interface ReleaseMode {
+    fun pathsToSingleReleaseMode(): Map<PathTail, SingleReleaseMode>
+
     sealed interface SingleReleaseMode : ReleaseMode {
         val onPaths: List<PathTail>?
+
+        override fun pathsToSingleReleaseMode() = onPaths?.associateWith { this } ?: emptyMap()
 
         data class Release(override val onPaths: List<PathTail>?) : SingleReleaseMode
         data class Borrow(override val onPaths: List<PathTail>?) : SingleReleaseMode
@@ -21,7 +25,7 @@ sealed interface ReleaseMode {
         val release: SingleReleaseMode.Release,
         val borrow: SingleReleaseMode.Borrow,
         val move: SingleReleaseMode.Move
-    ) {
+    ) : ReleaseMode {
         constructor(vararg releaseModes: SingleReleaseMode) : this(
             releaseModes.filterIsInstance<SingleReleaseMode.Release>().single(),
             releaseModes.filterIsInstance<SingleReleaseMode.Borrow>().single(),
@@ -31,6 +35,9 @@ sealed interface ReleaseMode {
         init {
             // TODO: Check for conflicts
         }
+
+        override fun pathsToSingleReleaseMode() =
+            release.pathsToSingleReleaseMode() + borrow.pathsToSingleReleaseMode() + move.pathsToSingleReleaseMode()
     }
 
     companion object {

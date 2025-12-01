@@ -1,8 +1,8 @@
 package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.analysis.BorroQStore
+import de.mr_pine.borroq.analysis.BorroQTransfer
 import de.mr_pine.borroq.analysis.MemberTypeAnalysis
-import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.Mutability
 
 context(memberTypeAnalysis: MemberTypeAnalysis)
@@ -10,7 +10,7 @@ fun IdPath.fieldPermission(): Permission? {
     val mutability = memberTypeAnalysis.getFieldMutability(tail.fields.last()) ?: return null
     return when (mutability) { // TODO: Sanity check
         is Mutability.Mutable -> Permission(Rational.ONE)
-        is Mutability.Immutable -> Permission(Rational.HALF)
+        is Mutability.Immutable -> Permission(BorroQTransfer.ImmutableFraction)
     }
 }
 
@@ -42,12 +42,12 @@ fun Path.permission(): Permission? {
 }
 
 context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
-fun Path.hasDeepMutability() =
-    permission()?.withId(Id(""))?.hasShallowMutability ?: false && context(store.getBorrows()) { asIdPath().allowsDeepMutability() }
+fun IdPath.hasDeepMutability() =
+    store.hasShallowMutability(id) && context(store.getBorrows()) { allowsDeepMutability() }
 
 context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
-fun Path.hasDeepReadability() =
-    permission()?.withId(Id(""))?.hasShallowReadability ?: false && context(store.getBorrows()) { asIdPath().allowsDeepReadability() }
+fun IdPath.hasDeepReadability() =
+    store.hasShallowMutability(id) && context(store.getBorrows()) { allowsDeepReadability() }
 
 context(borrows: List<Borrow>)
 fun IdPath.allowsDeepMutability() = borrows.none { this.isPrefixOf(it.path) }

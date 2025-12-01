@@ -37,4 +37,5 @@ data class IdPath(val id: Id, val tail: PathTail) {
             .all { (a, b) -> a == b }
 
     fun with(field: VariableElement) = IdPath(id, PathTail(tail.fields + field))
+    fun with(tail: PathTail) = IdPath(id, PathTail(this.tail.fields + tail.fields))
 }

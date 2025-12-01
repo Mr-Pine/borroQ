@@ -153,6 +153,16 @@ class BorroQStore constructor(
 
     fun queryThisPermission(): VariablePermission? = thisPermission
 
+    fun hasShallowMutability(id: Id): Boolean {
+        return variablePermissions.values.all { it is IdentifiedPermission && it.id == id && it.hasShallowMutability }
+    }
+
+    fun localPermissionSum(id: Id) =
+        (variablePermissions.values + thisPermission).filterIsInstance<IdentifiedPermission>().filter { it.id == id }
+            .fold(
+                Rational.ZERO
+            ) { acc, v -> acc + v.fraction }
+
     fun getBorrows(): List<Borrow> = borrowList
 
     fun addBorrow(borrow: Borrow) {

@@ -4,13 +4,13 @@ import com.sun.source.tree.Tree
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
-import de.mr_pine.borroq.analysis.exceptions.BorroQException
-import de.mr_pine.borroq.analysis.exceptions.BorroQReportedException
+import de.mr_pine.borroq.analysis.exceptions.*
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.BorroQValue.Companion.asValue
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.ReleaseMode
 import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
@@ -34,6 +34,8 @@ class BorroQTransfer(
     private val annotationQuery: AnnotationQuery,
     private val strictness: Strictness
 ) : AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<BorroQValue, BorroQStore> {
+
+    private var parameters: List<LocalVariableNode>? = null
 
     fun Node.regularResult(
         value: BorroQValue?, store: BorroQStore, storeChanged: Boolean = true
@@ -64,10 +66,12 @@ class BorroQTransfer(
     override fun initialStore(
         underlyingAST: UnderlyingAST, parameters: List<LocalVariableNode>
     ): BorroQStore {
+        this.parameters = parameters.toList()
+
         val parameterPermissions = parameters.zip(signatureType.parameters).mapNotNull { (parameter, parameterType) ->
             val permission = when (parameterType?.mutability ?: return@mapNotNull null) {
                 is Mutability.Mutable -> Permission(Rational.ONE)
-                is Mutability.Immutable -> Permission(Rational.HALF)
+                is Mutability.Immutable -> Permission(ImmutableFraction)
             }
             val localVariable = JavaExpression.fromNode(parameter) as LocalVariable
             localVariable to (permission.withId(Id.fromNode(parameter)) as VariablePermission)
@@ -80,7 +84,7 @@ class BorroQTransfer(
             val unmentioned = typeFields.filter { field -> paths.none { it.fields.first() == field } }
             val unmentionedBorrows = unmentioned.map { field ->
                 val fraction = memberTypeAnalysis.getFieldMutability(field)
-                    .let { if (it is Mutability.Mutable) Rational.ONE else Rational.HALF }
+                    .let { if (it is Mutability.Mutable) Rational.ONE else ImmutableFraction }
                 Borrow(borrowBase.with(field), fraction, Borrow.Identifier.Dummy)
             }
 
@@ -115,8 +119,8 @@ class BorroQTransfer(
             null -> if (TreeUtils.isConstructor(methodAST.method)) Permission(Rational.ONE) else null
 
             is Mutability.Mutable -> Permission(Rational.ONE)
-            is Mutability.Immutable -> Permission(Rational.HALF)
-        }?.withId(Id("this"))
+            is Mutability.Immutable -> Permission(ImmutableFraction)
+        }?.withId(ThisId)
         val receiverBorrows = if (signatureType.receiverType != null) run {
             val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
 
@@ -124,12 +128,12 @@ class BorroQTransfer(
 
             context(
                 signatureType.receiverType.mutability, methodAST.method.receiverParameter ?: methodAST.method!!
-            ) { calculateBorrows(IdPath(Id("this")), baseType, onPaths) }
+            ) { calculateBorrows(IdPath(ThisId), baseType, onPaths) }
         } else if (TreeUtils.isConstructor(methodAST.method)) {
             val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
             context(
                 Mutability.Mutable(emptyList()), methodAST.method.receiverParameter ?: methodAST.method!!
-            ) { calculateBorrows(IdPath(Id("this")), baseType, emptyList()) }
+            ) { calculateBorrows(IdPath(ThisId), baseType, emptyList()) }
         } else emptyList()
 
         return BorroQStore(
@@ -299,7 +303,7 @@ class BorroQTransfer(
         require(!input.containsTwoStores()) { "Field access node $node has two stores" }
 
         val fieldPermission = memberTypeAnalysis.getFieldMutability(node.element)
-            .let { if (it is Mutability.Mutable) Permission(Rational.ONE) else Permission(Rational.HALF) } // TODO: Correctly handle restrictions
+            .let { if (it is Mutability.Mutable) Permission(Rational.ONE) else Permission(ImmutableFraction) } // TODO: Correctly handle restrictions
 
         val receiverPath = when (node.receiver) {
             is FieldAccessNode -> {
@@ -347,19 +351,73 @@ class BorroQTransfer(
         exceptionReportContext(node.tree!!) {
             require(!input.containsTwoStores()) { "Return node $node with two stores" }
             if (node.result == null) return node.regularResult(null, input.regularStore, false)
-            val returnPermission = input.getValueOfSubNode(node.result)!!
-
-            /* TODO: Reintroduce with correct restriction handling
-            when (signatureType.returnMutability!!) {
-                Mutability.MUTABLE -> if (!returnPermission.hasShallowMutability) throw IncompatibleReturnPermission(
-                    returnPermission, signatureType.returnMutability
-                )
-
-                Mutability.IMMUTABLE -> if (!returnPermission.hasShallowReadability) throw IncompatibleReturnPermission(
-                    returnPermission, signatureType.returnMutability
-                )
+            val returnPath = input.getValueOfSubNode(node.result)!!.let {
+                when (it) {
+                    is BorroQValue.FieldAccess -> context(input.regularStore) { it.access.asIdPath() }
+                    is IdentifiedPermission -> IdPath(it.id)
+                    else -> TODO("Unrecognized return node $it")
+                }
             }
-             */
+
+            require(signatureType.returnMutability!!.onPaths == null) { "Return type cannot be restricted on paths" }
+            context(input.regularStore, memberTypeAnalysis) {
+                when (signatureType.returnMutability) {
+                    is Mutability.Mutable -> if (!returnPath.hasDeepMutability()) throw IncompatibleReturnPermissionException(
+                        signatureType.returnMutability
+                    )
+
+                    is Mutability.Immutable -> if (!returnPath.hasDeepReadability()) throw IncompatibleReturnPermissionException(
+                        signatureType.returnMutability
+                    )
+                }
+            }
+
+            val receiverPathsReleaseMapping =
+                signatureType.receiverType?.releaseMode?.pathsToSingleReleaseMode().orEmpty()
+
+            fun validateReleaseMode(baseId: Id, releaseMode: ReleaseMode) {
+                val pathsReleaseMapping =
+                    releaseMode.pathsToSingleReleaseMode()
+                for ((pathTail, releaseMode) in pathsReleaseMapping) {
+                    val path = IdPath(baseId, pathTail)
+
+                    when (releaseMode) {
+                        is SingleReleaseMode.Release, is SingleReleaseMode.Borrow -> {
+                            val permissionSum = input.regularStore.localPermissionSum(baseId)
+                            val permissionTarget = when (signatureType.receiverType?.mutability) {
+                                is Mutability.Immutable -> ImmutableFraction
+                                is Mutability.Mutable -> Rational.ONE
+                                null -> Rational.ZERO
+                            }
+
+                            if (permissionTarget > permissionSum) throw ReleasePermissionMissingException(baseId.name)
+
+                            val borrowIdExclude: Borrow.Identifier? =
+                                if (releaseMode is SingleReleaseMode.Borrow) (input.getValueOfSubNode(node.result) as? IdentifiedPermission)?.id else null
+
+                            val conflictingPaths = input.regularStore.getBorrows()
+                                .filter { it.path.isPrefixOf(path) || path.isPrefixOf(it.path) }
+                                .filter { it.id != borrowIdExclude }
+                            if (conflictingPaths.isNotEmpty()) {
+                                val borrow = conflictingPaths.first()
+                                throw ReleaseBorrowConflictException(path, borrow.id, borrow.path)
+                            }
+                        }
+
+                        is SingleReleaseMode.Move -> {}
+                    }
+                }
+            }
+
+            signatureType.receiverType?.let { validateReleaseMode(ThisId, it.releaseMode) }
+
+            for ((parameter, paramType) in parameters!!.zip(signatureType.parameters)) {
+                paramType ?: continue // primitive
+                val id = Id.fromNode(parameter)
+
+                validateReleaseMode(id, paramType.releaseMode)
+            }
+
             node.regularResult(null, input.regularStore, false)
         }
     } catch (_: BorroQReportedException) {
@@ -368,8 +426,13 @@ class BorroQTransfer(
 
     override fun visitValueLiteral(node: ValueLiteralNode, p: Input): Result {
         return node.regularResult(
-            BorroQValue.FreePermission(Permission(Rational.HALF)), p.regularStore
+            BorroQValue.FreePermission(Permission(ImmutableFraction)), p.regularStore
         )
+    }
+
+    companion object {
+        val ThisId = Id("this")
+        val ImmutableFraction = Rational.HALF
     }
 
     //region Noop visit functions
