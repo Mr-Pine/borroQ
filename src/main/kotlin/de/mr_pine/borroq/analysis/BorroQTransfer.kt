@@ -5,6 +5,7 @@ import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
 import de.mr_pine.borroq.analysis.exceptions.*
+import de.mr_pine.borroq.analysis.livevariable.LiveVarNode
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
@@ -45,6 +46,18 @@ class BorroQTransfer(
         for (variable in died) {
             store.killVariable(variable.liveVariable)
         }
+
+        fun Set<LiveVarNode>?.liveIds() =
+            orEmpty().asSequence().map { it.liveVariable }.filterIsInstance<LocalVariableNode>()
+                .mapNotNull { store.queryPermission(it) as IdentifiedPermission? }.map { it.id }.toSet()
+
+        val diedIds =
+            liveness.getStoreBefore(this)?.liveVariables.liveIds() - liveness.getStoreAfter(this)?.liveVariables.liveIds()
+
+        for (id in diedIds) {
+            store.removeBorrowsWithId(id)
+        }
+
         return RegularTransferResult(value, store, storeChanged)
     }
 

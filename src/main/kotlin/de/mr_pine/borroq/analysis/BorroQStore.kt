@@ -174,6 +174,10 @@ class BorroQStore constructor(
         borrowList.remove(borrow)
     }
 
+    fun removeBorrowsWithId(id: Id) {
+        borrowList.removeAll { it.id == id }
+    }
+
     override fun leastUpperBound(other: BorroQStore?): BorroQStore {
         other!!
         val combinedLocalPermissions = variablePermissions.keys.union(other.variablePermissions.keys).associateWith {
