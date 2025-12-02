@@ -24,6 +24,7 @@ kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xcontext-parameters")
         freeCompilerArgs.add("-Xnested-type-aliases")
+        freeCompilerArgs.add("-Xdata-flow-based-exhaustiveness")
     }
 }
 

@@ -415,25 +415,36 @@ class BorroQTransfer(
     ): Result = try {
         exceptionReportContext(node.tree!!) {
             require(!input.containsTwoStores()) { "Return node $node with two stores" }
+            require(signatureType.returnMutability!!.onPaths == null) { "Return type cannot be restricted on paths" }
+
             if (node.result == null) return node.regularResult(null, input.regularStore, false)
-            val returnPath = input.getValueOfSubNode(node.result)?.let {
-                when (it) {
+
+            input.getValueOfSubNode(node.result)?.let {
+                if (it is BorroQValue.FreePermission) {
+                    val dummyIdentifiedPermission = it.permission.withId(Id(""))
+                    when (signatureType.returnMutability) {
+                        is Mutability.Mutable -> if (!dummyIdentifiedPermission.hasShallowMutability) throw IncompatibleReturnPermissionException(signatureType.returnMutability)
+                        is Mutability.Immutable -> if (!dummyIdentifiedPermission.hasShallowReadability) throw IncompatibleReturnPermissionException(signatureType.returnMutability)
+                    }
+                    return@let
+                }
+
+                val returnPath = when (it) {
                     is BorroQValue.FieldAccess -> context(input.regularStore) { it.access.asIdPath() }
                     is IdentifiedPermission -> IdPath(it.id)
-                    else -> TODO("Unrecognized return node $it")
+                    is BorroQValue.Primitive -> return@let
+                    is VariablePermission.Top -> throw TopPermissionEncounteredException("<return value>")
                 }
-            }
+                context(input.regularStore, memberTypeAnalysis) {
+                    when (signatureType.returnMutability) {
+                        is Mutability.Mutable -> if (!returnPath.hasDeepMutability()) throw IncompatibleReturnPermissionException(
+                            signatureType.returnMutability
+                        )
 
-            require(signatureType.returnMutability!!.onPaths == null) { "Return type cannot be restricted on paths" }
-            if (returnPath != null) context(input.regularStore, memberTypeAnalysis) {
-                when (signatureType.returnMutability) {
-                    is Mutability.Mutable -> if (!returnPath.hasDeepMutability()) throw IncompatibleReturnPermissionException(
-                        signatureType.returnMutability
-                    )
-
-                    is Mutability.Immutable -> if (!returnPath.hasDeepReadability()) throw IncompatibleReturnPermissionException(
-                        signatureType.returnMutability
-                    )
+                        is Mutability.Immutable -> if (!returnPath.hasDeepReadability()) throw IncompatibleReturnPermissionException(
+                            signatureType.returnMutability
+                        )
+                    }
                 }
             }
 
