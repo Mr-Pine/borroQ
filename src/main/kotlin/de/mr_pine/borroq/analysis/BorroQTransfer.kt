@@ -55,7 +55,10 @@ class BorroQTransfer(
             liveness.getStoreBefore(this)?.liveVariables.liveIds() - liveness.getStoreAfter(this)?.liveVariables.liveIds()
 
         for (id in diedIds) {
-            store.removeBorrowsWithId(id)
+            val removedBorrows = store.removeBorrowsWithId(id)
+            removedBorrows.filter { it.path.tail.fields.isEmpty() }.forEach {
+                store.recombineAny(Permission(it.fraction).withId(it.path.id))
+            }
         }
 
         return RegularTransferResult(value, store, storeChanged)

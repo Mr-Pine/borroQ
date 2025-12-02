@@ -94,19 +94,24 @@ class BorroQStore constructor(
         return split
     }
 
-    fun recombine(receiver: LocalVariable, permission: VariablePermission) {
+    fun recombine(receiver: LocalVariable, permission: IdentifiedPermission) {
         val existingPermission = variablePermissions[receiver]!!
         require(existingPermission is IdentifiedPermission) { "Cannot recombine with non-identified permission" }
-        require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
         require(existingPermission.id == permission.id) { "Cannot recombine permissions with different ids" }
         variablePermissions[receiver] = existingPermission.recombineFractional(permission)
     }
 
     fun recombine(receiver: Node, permission: VariablePermission) {
+        require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
         when (val expression = JavaExpression.fromNode(receiver)) {
             is LocalVariable -> recombine(expression, permission)
             else -> TODO()
         }
+    }
+
+    fun recombineAny(permission: IdentifiedPermission) {
+        val receiver = variablePermissions.filterValues { it is IdentifiedPermission && it.id == permission.id }.keys.firstOrNull() ?: return
+        recombine(receiver, permission)
     }
 
     fun recombineThis(permission: VariablePermission) {
