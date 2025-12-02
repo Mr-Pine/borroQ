@@ -41,14 +41,6 @@ fun Path.permission(): Permission? {
     return Permission(prefixPermission.fraction * field.fraction)
 }
 
-context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
-fun IdPath.hasDeepMutability() =
-    store.hasShallowMutability(id) && context(store.getBorrows()) { allowsDeepMutability() }
-
-context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
-fun IdPath.hasDeepReadability() =
-    store.hasShallowMutability(id) && context(store.getBorrows()) { allowsDeepReadability() }
-
 context(borrows: List<Borrow>)
 fun IdPath.allowsDeepMutability() = borrows.none { this.isPrefixOf(it.path) }
 

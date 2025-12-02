@@ -77,7 +77,8 @@ class BorroQTransfer(
             localVariable to (permission.withId(Id.fromNode(parameter)) as VariablePermission)
         }.toMap().toMutableMap()
 
-        context(mutability: Mutability, paramSource: Tree) fun calculateBorrows(
+        context(mutability: Mutability, paramSource: Tree)
+        fun calculateBorrows(
             borrowBase: IdPath, baseType: TypeElement, paths: List<PathTail>
         ): List<Borrow> {
             val typeFields = ElementUtils.getAllFieldsIn(baseType, checker.elementUtils)
@@ -198,11 +199,11 @@ class BorroQTransfer(
                 val releasePathMapping = type.releaseMode.pathsToSingleReleaseMode()
                 for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
                     val path = basePath.with(pathTail)
-                    context(outputStore, memberTypeAnalysis) {
-                        val hasRequiredMutability =
+                    context(outputStore, outputStore.getBorrows(), memberTypeAnalysis) {
+                        val allowsRequiredMutability =
                             if (type.mutability is Mutability.Mutable) path.asIdPath()
-                                .hasDeepMutability() else path.asIdPath().hasDeepReadability()
-                        if (!hasRequiredMutability) {
+                                .allowsDeepMutability() else path.asIdPath().allowsDeepReadability()
+                        if (!allowsRequiredMutability) {
                             throw InsufficientDeepPermissionException(path, type.mutability)
                         }
                     }
@@ -287,8 +288,7 @@ class BorroQTransfer(
             return node.regularResult(freePermission, outputStore)
         } catch (_: BorroQReportedException) {
             return node.regularResult(
-                returnPermission?.let { BorroQValue.FreePermission(it, emptyList()) },
-                input.regularStore
+                returnPermission?.let { BorroQValue.FreePermission(it, emptyList()) }, input.regularStore
             )
         }
     }
@@ -313,8 +313,8 @@ class BorroQTransfer(
                 ?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(node.target.type)) }
         }
 
-        return when (val rhsValue = input.getValueOfSubNode(node.expression)
-            ?: return node.regularResult(null, input.regularStore, false)) {
+        return when (val rhsValue =
+            input.getValueOfSubNode(node.expression) ?: return node.regularResult(null, input.regularStore, false)) {
             is BorroQValue.FreePermission -> {
                 val targetId = Id.fromNode(node.target)
                 val targetPermission = rhsValue.permission.withId(targetId)
@@ -420,37 +420,50 @@ class BorroQTransfer(
             if (node.result == null) return node.regularResult(null, input.regularStore, false)
 
             input.getValueOfSubNode(node.result)?.let {
-                if (it is BorroQValue.FreePermission) {
-                    val dummyIdentifiedPermission = it.permission.withId(Id(""))
-                    when (signatureType.returnMutability) {
-                        is Mutability.Mutable -> if (!dummyIdentifiedPermission.hasShallowMutability) throw IncompatibleReturnPermissionException(signatureType.returnMutability)
-                        is Mutability.Immutable -> if (!dummyIdentifiedPermission.hasShallowReadability) throw IncompatibleReturnPermissionException(signatureType.returnMutability)
+                val (basePermission, returnPath) = when (it) {
+                    is BorroQValue.FieldAccess -> {
+                        val idPath = context(input.regularStore) { it.access.asIdPath() }
+                        val base = when (it.access.root) {
+                            is PathRoot.ThisPathRoot -> input.regularStore.queryThisPermission()!!
+                            is PathRoot.LocalVariableRoot -> input.regularStore.queryPermission(it.access.root.variable)!!
+                        }
+                        (base to idPath)
                     }
-                    return@let
-                }
 
-                val returnPath = when (it) {
-                    is BorroQValue.FieldAccess -> context(input.regularStore) { it.access.asIdPath() }
-                    is IdentifiedPermission -> IdPath(it.id)
+                    is IdentifiedPermission -> it to IdPath(it.id)
+                    is BorroQValue.FreePermission -> {
+                        val dummyIdentifiedPermission = it.permission.withId(Id(""))
+                        dummyIdentifiedPermission to null
+                    }
+
                     is BorroQValue.Primitive -> return@let
                     is VariablePermission.Top -> throw TopPermissionEncounteredException("<return value>")
                 }
-                context(input.regularStore, memberTypeAnalysis) {
+                context(input.regularStore.getBorrows(), memberTypeAnalysis) {
                     when (signatureType.returnMutability) {
-                        is Mutability.Mutable -> if (!returnPath.hasDeepMutability()) throw IncompatibleReturnPermissionException(
-                            signatureType.returnMutability
-                        )
+                        is Mutability.Mutable -> {
+                            if (!basePermission.hasShallowMutability) throw IncompatibleReturnPermissionException(
+                                signatureType.returnMutability
+                            )
+                            if (returnPath?.allowsDeepMutability() == false) throw IncompatibleReturnPermissionException(
+                                signatureType.returnMutability
+                            )
+                        }
 
-                        is Mutability.Immutable -> if (!returnPath.hasDeepReadability()) throw IncompatibleReturnPermissionException(
-                            signatureType.returnMutability
-                        )
+                        is Mutability.Immutable -> {
+                            if (!basePermission.hasShallowReadability) throw IncompatibleReturnPermissionException(
+                                signatureType.returnMutability
+                            )
+                            if (returnPath?.allowsDeepReadability() == false) throw IncompatibleReturnPermissionException(
+                                signatureType.returnMutability
+                            )
+                        }
                     }
                 }
             }
 
             fun validateReleaseMode(baseId: Id, releaseMode: ReleaseMode) {
-                val pathsReleaseMapping =
-                    releaseMode.pathsToSingleReleaseMode()
+                val pathsReleaseMapping = releaseMode.pathsToSingleReleaseMode()
                 for ((pathTail, releaseMode) in pathsReleaseMapping) {
                     val path = IdPath(baseId, pathTail)
 
@@ -498,12 +511,10 @@ class BorroQTransfer(
     }
 
     override fun visitStringLiteral(
-        node: StringLiteralNode,
-        input: Input
+        node: StringLiteralNode, input: Input
     ): Result {
         return node.regularResult(
-            BorroQValue.FreePermission(Permission(ImmutableFraction), emptyList()),
-            input.regularStore
+            BorroQValue.FreePermission(Permission(ImmutableFraction), emptyList()), input.regularStore
         )
     }
 

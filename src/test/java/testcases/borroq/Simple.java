@@ -27,7 +27,7 @@ public class Simple {
         @Mutable Object obj2 = new Object();
         @Mutable Object objCopy = obj;
 
-        // :: error: permission.insufficient
+        // :: error: permission.insufficient.shallow
         use(obj);
         use(obj2);
         use(objCopy);
