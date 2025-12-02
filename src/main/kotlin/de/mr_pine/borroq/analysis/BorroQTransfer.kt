@@ -212,8 +212,8 @@ class BorroQTransfer(
                 for ((pathTail, releaseMode) in releasePathMapping.filterValues { it is SingleReleaseMode.Borrow || it is SingleReleaseMode.Move }) {
                     val path = basePath.with(pathTail)
                     val fraction = when (type.mutability) {
-                        is Mutability.Mutable -> ImmutableFraction
-                        is Mutability.Immutable -> Rational.ONE
+                        is Mutability.Mutable -> Rational.ONE
+                        is Mutability.Immutable -> ImmutableFraction
                     }
                     val tempBorrow =
                         Borrow(context(input.regularStore) { path.asIdPath() }, fraction, Borrow.Identifier.Dummy)
@@ -279,7 +279,7 @@ class BorroQTransfer(
 
             val freeBorrows = buildList {
                 for (borrow in temporaryBorrows) {
-                    outputStore.addBorrow(borrow)
+                    outputStore.removeBorrow(borrow)
                     add(BorroQValue.FreePermission.FreeBorrow(borrow.path, borrow.fraction))
                 }
             }
