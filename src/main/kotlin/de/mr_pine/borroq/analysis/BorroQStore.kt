@@ -174,8 +174,16 @@ class BorroQStore constructor(
         borrowList.remove(borrow)
     }
 
-    fun removeBorrowsWithId(id: Id) {
-        borrowList.removeAll { it.id == id }
+    fun removeBorrowsWithId(id: Id): List<Borrow> {
+        val toRemove = borrowList.filter { it.id == id }
+        borrowList.removeAll(toRemove)
+        return toRemove
+    }
+
+    fun removeBorrowsWithPathPrefix(path: IdPath): List<Borrow> {
+        val toRemove = borrowList.filter { path.isPrefixOf(it.path) }
+        borrowList.removeAll(toRemove)
+        return toRemove
     }
 
     override fun leastUpperBound(other: BorroQStore?): BorroQStore {

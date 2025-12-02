@@ -213,9 +213,8 @@ class BorroQTransfer(
                 for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
                     val path = basePath.with(pathTail)
                     context(outputStore, outputStore.getBorrows(), memberTypeAnalysis) {
-                        val allowsRequiredMutability =
-                            if (type.mutability is Mutability.Mutable) path.asIdPath()
-                                .allowsDeepMutability() else path.asIdPath().allowsDeepReadability()
+                        val allowsRequiredMutability = if (type.mutability is Mutability.Mutable) path.asIdPath()
+                            .allowsDeepMutability() else path.asIdPath().allowsDeepReadability()
                         if (!allowsRequiredMutability) {
                             throw InsufficientDeepPermissionException(path, type.mutability)
                         }
@@ -306,34 +305,27 @@ class BorroQTransfer(
         }
     }
 
-    override fun visitAssignment(
-        node: AssignmentNode, input: Input
-    ): Result {
-        require(!input.containsTwoStores()) { "Assignment node $node has two stores" }
-
-        if (node.target !is LocalVariableNode) {
-            return visitNode(node, input)
-        }
-
+    //region assignment
+    fun visitLocalVariableAssignment(node: AssignmentNode, target: LocalVariableNode, input: Input): Result {
         fun result(value: BorroQValue, storeUpdate: BorroQStore.() -> Unit): Result {
             val store = input.getRegularStore()
             store.storeUpdate()
             return node.regularResult(value, store)
         }
 
-        val targetAnnotation = node.target.tree?.let {
+        val targetAnnotation = target.tree?.let {
             annotationQuery.getAssignmentLeftSideAnnotations(it)
-                ?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(node.target.type)) }
+                ?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(target.type)) }
         }
 
         return when (val rhsValue =
             input.getValueOfSubNode(node.expression) ?: return node.regularResult(null, input.regularStore, false)) {
             is BorroQValue.FreePermission -> {
-                val targetId = Id.fromNode(node.target)
+                val targetId = Id.fromNode(target)
                 val targetPermission = rhsValue.permission.withId(targetId)
                 val borrows = rhsValue.attachedBorrows.map { it.toBorrow(targetId) }
                 result(targetPermission) {
-                    updatePermission(node.target, targetPermission)
+                    updatePermission(target, targetPermission)
                     for (borrow in borrows) addBorrow(borrow)
                 }
             }
@@ -341,7 +333,7 @@ class BorroQTransfer(
             is IdentifiedPermission -> {
                 val (targetPermission, remainingPermission) = rhsValue.split(targetAnnotation)
                 result(targetPermission) {
-                    updatePermission(node.target, targetPermission)
+                    updatePermission(target, targetPermission)
                     when (node.expression) {
                         is LocalVariableNode -> updatePermission(node.expression, remainingPermission)
                         is ThisNode -> result(rhsValue) { updateThisPermission(remainingPermission) }
@@ -352,7 +344,7 @@ class BorroQTransfer(
 
             is BorroQValue.FieldAccess -> {
                 val (usedVariablePermission, _) = rhsValue.fieldPermission.split(targetAnnotation)
-                val targetId = Id.fromNode(node.target)
+                val targetId = Id.fromNode(target)
                 val borrow = Borrow(
                     context(input.regularStore) { rhsValue.access.asIdPath() },
                     usedVariablePermission.fraction,
@@ -364,7 +356,7 @@ class BorroQTransfer(
                     node.regularResult(variablePermission, input.regularStore, false)
                 } else {
                     result(variablePermission) {
-                        updatePermission(node.target, variablePermission)
+                        updatePermission(target, variablePermission)
                         addBorrow(borrow)
                     }
                 }
@@ -372,8 +364,83 @@ class BorroQTransfer(
 
             else -> TODO()
         }
-
     }
+
+    fun visitFieldAssignment(node: AssignmentNode, target: FieldAccessNode, input: Input): Result {
+        val fieldMutability = memberTypeAnalysis.getFieldMutability(target.element) ?: return node.regularResult(
+            null, input.regularStore, false
+        )
+        val fieldFraction = when (fieldMutability) {
+            is Mutability.Mutable -> Rational.ONE
+            is Mutability.Immutable -> ImmutableFraction
+        }
+        val newValuePermission = input.getValueOfSubNode(node.expression)!!
+
+        val (newValueFraction, newValueId) = try {
+            exceptionReportContext(node.expression.tree!!) {
+                when (newValuePermission) {
+                    is IdentifiedPermission -> newValuePermission.fraction to newValuePermission.id
+                    else -> TODO("Fields can currently only be assigned from local variables") // newValuePermission.permission
+                }
+            }
+        } catch (_: BorroQReportedException) {
+            Rational.ONE to null
+        }
+
+        val receiverPath = Path.fromNode(target.receiver)
+        val pathPermission =
+            context(input.regularStore, memberTypeAnalysis) { receiverPath.permission() }!!.withId(Id(""))
+
+        try {
+            if (!pathPermission.hasShallowMutability) exceptionReportContext(target.tree!!) {
+                throw InsufficientShallowAssignmentTargetReceiverPermissionException(receiverPath, pathPermission)
+            }
+
+            if (newValueFraction < fieldFraction) exceptionReportContext(node.tree!!) {
+                throw InsufficientShallowAssignmentExpressionPermissionException(
+                    node.expression, fieldFraction, newValuePermission
+                )
+            }
+
+            // Conflicting borrow special case for "hidden" fields
+            val hasConflictingBorrow =
+                input.regularStore.getBorrows().any { it.path == receiverPath && it.id == Borrow.Identifier.Dummy }
+            if (hasConflictingBorrow) exceptionReportContext(node.target.tree!!) {
+                throw HiddenFieldAssignedException()
+            }
+        } catch (_: BorroQReportedException) {
+        }
+
+        input.regularStore.removeBorrowsWithPathPrefix(context(input.regularStore) {
+            receiverPath.with(target.element).asIdPath()
+        })
+
+        if (newValueId != null) {
+            val totalPermissionOfId = input.regularStore.localPermissionSum(newValueId)
+            val reassignedPortion = newValueFraction / totalPermissionOfId
+
+            input.regularStore.removeBorrowsWithId(newValueId)
+                .map { Borrow(it.path, it.fraction - reassignedPortion, it.id) }.filterNot { it.fraction.isZero() }
+                .forEach { input.regularStore.addBorrow(it) }
+
+            input.regularStore.updatePermission(node.expression, Permission(Rational.ZERO).withId(newValueId))
+        }
+
+        return node.regularResult(null, input.regularStore)
+    }
+
+    override fun visitAssignment(
+        node: AssignmentNode, input: Input
+    ): Result {
+        require(!input.containsTwoStores()) { "Assignment node $node has two stores" }
+
+        return when (val target = node.target) {
+            is LocalVariableNode -> visitLocalVariableAssignment(node, target, input)
+            is FieldAccessNode -> visitFieldAssignment(node, target, input)
+            else -> visitNode(node, input)
+        }
+    }
+    //endregion
 
     override fun visitFieldAccess(
         node: FieldAccessNode, input: Input

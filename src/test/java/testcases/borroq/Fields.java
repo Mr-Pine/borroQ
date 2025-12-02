@@ -33,8 +33,10 @@ public interface Fields {
 
         @Mutable
         A() {
-            this.x = new B(0);
-            this.y = new B(1);
+            @Mutable B x = new B(0);
+            this.x = x;
+            @Mutable B y = new B(0);
+            this.y = y;
         }
 
 
