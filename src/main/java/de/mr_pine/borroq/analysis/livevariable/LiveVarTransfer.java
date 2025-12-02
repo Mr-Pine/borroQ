@@ -1,5 +1,6 @@
 package de.mr_pine.borroq.analysis.livevariable;
 
+import org.checkerframework.common.returnsreceiver.qual.This;
 import org.checkerframework.dataflow.analysis.*;
 import org.checkerframework.dataflow.cfg.UnderlyingAST;
 import org.checkerframework.dataflow.cfg.node.*;
@@ -55,6 +56,10 @@ public class LiveVarTransfer
         LiveVarStore store = transferResult.getRegularStore();
         for (Node arg : n.getArguments()) {
             store.addUseInExpression(arg);
+        }
+        Node receiver = n.getTarget().getReceiver();
+        if (receiver != null) {
+            store.addUseInExpression(receiver);
         }
         return transferResult;
     }
