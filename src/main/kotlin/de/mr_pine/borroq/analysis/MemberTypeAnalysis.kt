@@ -49,7 +49,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val parentElement = elements.getTypeElement(fqnParentName) ?: return null
         val simpleSignature = StubElementPrinter.print(callable)
 
-        val identicalSimpleConstructors = parentElement.enclosedElements.filter {
+        val identicalSimpleCallable = parentElement.enclosedElements.filter {
             it.kind == when (callable) {
                 is MethodDeclaration -> ElementKind.METHOD
                 is ConstructorDeclaration -> ElementKind.CONSTRUCTOR
@@ -57,10 +57,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             }
         }.filterIsInstance<ExecutableElement>().filter { it.parameters.size == callable.parameters.size }
             .filter { ElementUtils.getSimpleSignature(it) == simpleSignature }
-        require(identicalSimpleConstructors.size <= 1) {
+        require(identicalSimpleCallable.size <= 1) {
             "Multiple or no constructors with identical signature found: $simpleSignature"
         }
-        val element = identicalSimpleConstructors.firstOrNull() ?: return null // No matching constructor found
+        val element = identicalSimpleCallable.firstOrNull() ?: return null // No matching constructor found
 
         fun List<AnnotationExpr>.annotationElements() = mapNotNull { annot ->
             val simpleName = annot.nameAsString
@@ -78,6 +78,8 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val returnMutability = Mutability.fromAnnotationsOnType(returnAnnotations, parentElement)
 
         val parameterTypes = callable.parameters.map {
+            if (it.type.isPrimitiveType) return@map null
+
             val parameterAnnotations = it.annotations.annotationElements()
             val mutability = Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)
                 ?: return null // throw IllegalStateException("No mutability specified")

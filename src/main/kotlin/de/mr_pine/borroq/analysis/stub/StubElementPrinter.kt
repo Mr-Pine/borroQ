@@ -2,6 +2,7 @@ package de.mr_pine.borroq.analysis.stub
 
 import org.checkerframework.com.github.javaparser.ast.Node
 import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
+import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.Parameter
 import org.checkerframework.com.github.javaparser.ast.type.ArrayType
 import org.checkerframework.com.github.javaparser.ast.type.ClassOrInterfaceType
@@ -16,6 +17,14 @@ class StubElementPrinter : GenericVisitorAdapter<String, Unit>() {
             it.accept(this, Unit)
         }
         return "<init>($paramString)"
+    }
+
+    override fun visit(
+        n: MethodDeclaration,
+        arg: Unit?
+    ): String {
+        val arguments = n.parameters?.joinToString(",") { it.accept(this, Unit) } ?: ""
+        return "${n.name}($arguments)"
     }
 
     override fun visit(
