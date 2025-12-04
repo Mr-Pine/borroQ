@@ -10,11 +10,16 @@ import javax.lang.model.element.TypeElement
 
 sealed interface ReleaseMode {
     fun pathsToSingleReleaseMode(): Map<PathTail, SingleReleaseMode>
+    fun checkForConflicts()
 
     sealed interface SingleReleaseMode : ReleaseMode {
         val onPaths: List<PathTail>?
 
         override fun pathsToSingleReleaseMode() = onPaths?.associateWith { this } ?: emptyMap()
+
+        override fun checkForConflicts() {
+            PathTail.checkForConflicts(onPaths ?: emptyList())
+        }
 
         data class Release(override val onPaths: List<PathTail>?) : SingleReleaseMode
         data class Borrow(override val onPaths: List<PathTail>?) : SingleReleaseMode
@@ -32,9 +37,10 @@ sealed interface ReleaseMode {
             releaseModes.filterIsInstance<SingleReleaseMode.Move>().single()
         )
 
-        init {
-            // TODO: Check for conflicts
+        override fun checkForConflicts() {
+            PathTail.checkForConflicts(release.onPaths.orEmpty() + borrow.onPaths.orEmpty() + move.onPaths.orEmpty())
         }
+
 
         override fun pathsToSingleReleaseMode() =
             release.pathsToSingleReleaseMode() + borrow.pathsToSingleReleaseMode() + move.pathsToSingleReleaseMode()

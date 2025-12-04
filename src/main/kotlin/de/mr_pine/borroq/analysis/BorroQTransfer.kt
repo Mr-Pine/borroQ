@@ -97,6 +97,9 @@ class BorroQTransfer(
         fun calculateBorrows(
             borrowBase: IdPath, baseType: TypeElement, paths: List<PathTail>
         ): List<Borrow> {
+            if (TypesUtils.isPrimitive(baseType.asType())) {
+                return emptyList()
+            }
             val typeFields = ElementUtils.getAllFieldsIn(baseType, checker.elementUtils)
             val unmentioned = typeFields.filter { field -> paths.none { it.fields.first() == field } }
             val unmentionedBorrows = unmentioned.map { field ->
@@ -186,7 +189,12 @@ class BorroQTransfer(
     ): Result {
         require(!input.containsTwoStores()) { "Method invocation node $node has two stores" }
 
-        val methodType = memberTypeAnalysis.getType(node.target.method)
+        val methodType = memberTypeAnalysis.getType(node.target.method, exceptionReportingContext = { block ->
+            try {
+                exceptionReportContext(node.tree!!, block)
+            } catch (_: BorroQReportedException) {
+            }
+        })
 
         val returnPermission = when (methodType.returnMutability) {
             is Mutability.Mutable -> Permission(Rational.ONE)
@@ -320,6 +328,7 @@ class BorroQTransfer(
             annotationQuery.getAssignmentLeftSideAnnotations(it)
                 ?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(target.type)) }
         }
+        require(targetAnnotation?.onPaths == null) { "Local variable mutability annotation cannot be restricted on paths" }
 
         return when (val rhsValue =
             input.getValueOfSubNode(node.expression) ?: return node.regularResult(null, input.regularStore, false)) {

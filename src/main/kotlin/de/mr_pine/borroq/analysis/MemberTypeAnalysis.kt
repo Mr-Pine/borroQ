@@ -39,8 +39,8 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         stubManager.parseStubFiles()
     }
 
-    fun getType(method: ExecutableElement): SignatureType {
-        return signatureCache.getOrPut(method, defaultValue = { calculateType(method) })
+    fun getType(method: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
+        return signatureCache.getOrPut(method, defaultValue = { calculateType(method, exceptionReportingContext) })
     }
 
     fun getType(callable: CallableDeclaration<*>, annotations: StubManager.ImportMap): SignatureType? {
@@ -76,15 +76,22 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
         val returnAnnotations = callable.annotations.annotationElements()
         val returnMutability = Mutability.fromAnnotationsOnType(returnAnnotations, parentElement)
+        require(returnMutability?.onPaths == null) { "Return mutability annotation cannot be restricted on paths" }
+
+        if (!callable.isStatic && !callable.isConstructorDeclaration) {
+            TODO("Non-static stubs")
+        }
 
         val parameterTypes = callable.parameters.map {
             if (it.type.isPrimitiveType) return@map null
 
             val parameterAnnotations = it.annotations.annotationElements()
-            val mutability = Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)
-                ?: return null // throw IllegalStateException("No mutability specified")
-            val releaseMode = ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)
-                ?: return null // throw IllegalStateException("No release mode specified")
+            val mutability =
+                Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
+                    ?: return null // throw IllegalStateException("No mutability specified")
+            val releaseMode =
+                ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
+                    ?: return null // throw IllegalStateException("No release mode specified")
             SignatureType.ParameterType(mutability, releaseMode)
         }
         val signatureType = SignatureType(returnMutability, null, parameterTypes)
@@ -92,17 +99,21 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         return signatureType
     }
 
-    private fun calculateType(executable: ExecutableElement): SignatureType {
+    private fun calculateType(
+        executable: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit
+    ): SignatureType {
         val returnPermission = if (executable.isConstructor) {
             executable as Symbol
             val annotations = executable.rawTypeAttributes.filter { it.position.type == TargetType.METHOD_RETURN }
             Mutability.fromAnnotationsOnType(annotations, null)
+                ?.also { exceptionReportingContext { it.checkForConflicts() } }
                 ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
         } else if (executable.returnType.kind.isPrimitive || executable.returnType.kind == TypeKind.VOID) {
             null
         } else {
             val annotations = executable.returnType.annotationMirrors
             Mutability.fromAnnotationsOnType(annotations, null)
+                ?.also { exceptionReportingContext { it.checkForConflicts() } }
                 ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
         }
 
@@ -115,8 +126,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val baseTypeElement = TypesUtils.getTypeElement(arg.asType())
 
             val mutability = Mutability.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
+                ?.also { exceptionReportingContext { it.checkForConflicts() } }
                 ?: throw IllegalStateException("No mutability specified")
             val releaseMode = ReleaseMode.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
+                ?.also { exceptionReportingContext { it.checkForConflicts() } }
                 ?: throw IllegalStateException("No release mode specified")
 
             SignatureType.ParameterType(mutability, releaseMode)
@@ -128,9 +141,11 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val baseTypeElement = TypesUtils.getTypeElement(executable.receiverType)
             val receiverMutability = Mutability.fromAnnotationsOnType(
                 executable.receiverType.annotationMirrors, baseTypeElement
-            ) ?: throw IllegalStateException("No receiver mutability specified specified for ${executable.simpleName}")
+            )?.also { exceptionReportingContext { it.checkForConflicts() } }
+                ?: throw IllegalStateException("No receiver mutability specified specified for ${executable.simpleName}")
             val receiverReleaseMode =
                 ReleaseMode.fromAnnotationsOnType(executable.receiverType.annotationMirrors, baseTypeElement)
+                    ?.also { exceptionReportingContext { it.checkForConflicts() } }
                     ?: throw IllegalStateException("No receiver release mode specified specified for ${executable.simpleName}")
             SignatureType.ParameterType(receiverMutability, receiverReleaseMode)
         }
@@ -140,10 +155,12 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
     fun getFieldMutability(field: VariableElement): Mutability? {
         if (field.asType().kind.isPrimitive) return null
-        return fieldCache.getOrPut(field) {
+        val fieldMutability = fieldCache.getOrPut(field) {
             val annotations = field.asType().annotationMirrors
             Mutability.fromAnnotationsOnType(annotations, TypesUtils.getTypeElement(field.asType()))
                 ?: throw IllegalStateException("No mutability for field specified")
         }
+        require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
+        return fieldMutability
     }
 }

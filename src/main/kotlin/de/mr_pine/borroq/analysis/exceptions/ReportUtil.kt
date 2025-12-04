@@ -2,9 +2,10 @@ package de.mr_pine.borroq.analysis.exceptions
 
 import de.mr_pine.borroq.types.*
 
+fun PathTail.display() = fields.joinToString(".") { it.simpleName }
 
 fun IdPath.display(): String {
-    val subfields = tail.fields.joinToString(".") { it.simpleName }
+    val subfields = tail.display()
     return if (subfields.isEmpty()) {
         id.display()
     } else {
@@ -17,7 +18,7 @@ fun PathRoot.display() = when (this) {
 }
 
 fun Path.display(): String {
-    val subfields = tail.fields.joinToString(".") { it.simpleName }
+    val subfields = tail.display()
     return if (subfields.isEmpty()) {
         root.display()
     } else {

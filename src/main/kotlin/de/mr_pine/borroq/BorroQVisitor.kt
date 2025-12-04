@@ -6,6 +6,7 @@ import com.sun.source.tree.ClassTree
 import com.sun.source.tree.MethodTree
 import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.analysis.*
+import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.livevariable.LiveVarTransfer
 import de.mr_pine.borroq.types.BorroQValue
 import org.checkerframework.dataflow.analysis.BackwardAnalysisImpl
@@ -46,7 +47,15 @@ class BorroQVisitor(
 
         val methodElement = (tree as JCTree.JCMethodDecl).sym
         val memberTypeAnalysis = MemberTypeAnalysis(checker)
-        val signatureType = memberTypeAnalysis.getType(methodElement)
+        val signatureType = memberTypeAnalysis.getType(methodElement, {
+            try {
+                it()
+            } catch (e: BorroQException) {
+                context(checker, tree) {
+                    e.report()
+                }
+            }
+        })
 
         val transfer = BorroQTransfer(
             signatureType,

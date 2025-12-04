@@ -13,4 +13,5 @@ object Messages {
     const val RELEASE_BORROW_CONFLICT = "permission.release.borrow.conflict"
     const val IMMUTABLE_FIELD_IN_MUTABLE_ANNOTATION = "annotation.mutable.immutable.field"
     const val HIDDEN_FIELD_ASSIGNED = "field.hidden.assigned"
+    const val CONFLICTING_PATH_RESTRICTIONS = "annotation.restricted.conflicting"
 }

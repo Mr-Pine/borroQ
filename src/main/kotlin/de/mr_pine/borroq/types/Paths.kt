@@ -1,6 +1,7 @@
 package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.analysis.BorroQStore
+import de.mr_pine.borroq.analysis.exceptions.ConflictingPathRestrictionsException
 import org.checkerframework.dataflow.cfg.node.FieldAccessNode
 import org.checkerframework.dataflow.cfg.node.LocalVariableNode
 import org.checkerframework.dataflow.cfg.node.Node
@@ -23,7 +24,19 @@ sealed interface PathRoot {
 }
 
 @JvmInline
-value class PathTail(val fields: List<VariableElement>)
+value class PathTail(val fields: List<VariableElement>) {
+    fun isPrefixOf(other: PathTail) = fields.size <= other.fields.size && fields.zip(other.fields)
+        .all { (a, b) -> a == b }
+
+    companion object {
+        fun checkForConflicts(paths: List<PathTail>) {
+            for ((i, path) in paths.withIndex()) {
+                val conflicting = paths.filterIndexed { index, _ -> index != i }.filter { path.isPrefixOf(it) }
+                if (conflicting.isNotEmpty()) throw ConflictingPathRestrictionsException(path, conflicting.first())
+            }
+        }
+    }
+}
 
 data class Path(val root: PathRoot, val tail: PathTail) {
     constructor(root: PathRoot) : this(root, PathTail(emptyList()))
@@ -56,8 +69,7 @@ data class IdPath(val id: Id, val tail: PathTail) {
     constructor(id: Id) : this(id, PathTail(emptyList()))
 
     fun isPrefixOf(other: IdPath) =
-        id == other.id && tail.fields.size <= other.tail.fields.size && tail.fields.zip(other.tail.fields)
-            .all { (a, b) -> a == b }
+        id == other.id && tail.isPrefixOf(other.tail)
 
     fun with(field: VariableElement) = IdPath(id, PathTail(tail.fields + field))
     fun with(tail: PathTail) = IdPath(id, PathTail(this.tail.fields + tail.fields))
