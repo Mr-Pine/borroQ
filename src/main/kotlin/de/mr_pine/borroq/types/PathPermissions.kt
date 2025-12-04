@@ -23,10 +23,11 @@ fun Path.rootPermission() = when (root) {
     is PathRoot.LocalVariableRoot -> store.queryPermission(root.variable) as Permission
 }
 
-context(borrows: List<Borrow>, memberTypeAnalysis: MemberTypeAnalysis)
+context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
 fun Path.borrowedFieldPermission(): Permission? {
     val baseFieldPermission = fieldPermission()?.fraction ?: return null
-    val borrowedAway = borrows.filter { it.path == this }.fold(Rational.ZERO) { acc, borrow -> acc + borrow.fraction }
+    val idPath = this.asIdPath()
+    val borrowedAway = store.getBorrows().filter { it.path == idPath }.fold(Rational.ZERO) { acc, borrow -> acc + borrow.fraction }
     return Permission(baseFieldPermission - borrowedAway)
 }
 
@@ -37,7 +38,7 @@ fun Path.permission(): Permission? {
     }
     val prefixPermission =
         copy(tail = PathTail(tail.fields.dropLast(1))).permission()!! // "Inner" fields aren't primitive
-    val field = context(store.getBorrows()) { borrowedFieldPermission() } ?: return null
+    val field = borrowedFieldPermission() ?: return null
     return Permission(prefixPermission.fraction * field.fraction)
 }
 
