@@ -65,6 +65,22 @@ class BorroQTransfer(
     }
 
     @OptIn(ExperimentalContracts::class)
+    private inline fun silentExceptionReportContext(
+        tree: Tree, block: () -> Unit
+    ) {
+        kotlin.contracts.contract {
+            callsInPlace(block, kotlin.contracts.InvocationKind.AT_MOST_ONCE)
+        }
+        try {
+            block()
+        } catch (e: BorroQException) {
+            context(checker, tree) {
+                e.report()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalContracts::class)
     private inline fun <R> exceptionReportContext(tree: Tree, block: () -> R): R {
         kotlin.contracts.contract {
             callsInPlace(block, kotlin.contracts.InvocationKind.EXACTLY_ONCE)
@@ -104,7 +120,7 @@ class BorroQTransfer(
             val unmentioned = typeFields.filter { field -> paths.none { it.fields.first() == field } }
             val unmentionedBorrows = unmentioned.map { field ->
                 val fraction = memberTypeAnalysis.getFieldMutability(field)
-                    .let { if (it is Mutability.Mutable) Rational.ONE else ImmutableFraction }
+                    ?.let { if (it is Mutability.Mutable) Rational.ONE else ImmutableFraction } ?: ImmutableFraction
                 Borrow(borrowBase.with(field), fraction, Borrow.Identifier.Dummy)
             }
 
@@ -203,7 +219,6 @@ class BorroQTransfer(
         }
 
         try {
-
             if (node.target.method.isConstructor && methodType.returnMutability is Mutability.Immutable && signatureType.returnMutability is Mutability.Mutable) exceptionReportContext(
                 node.tree!!
             ) {
@@ -318,6 +333,7 @@ class BorroQTransfer(
 
     //region assignment
     fun visitLocalVariableAssignment(node: AssignmentNode, target: LocalVariableNode, input: Input): Result {
+        require(!input.containsTwoStores()) { "Assignment node $node has two stores" }
         fun result(value: BorroQValue, storeUpdate: BorroQStore.() -> Unit): Result {
             val store = input.getRegularStore()
             store.storeUpdate()
@@ -355,12 +371,20 @@ class BorroQTransfer(
             }
 
             is BorroQValue.FieldAccess -> {
+                val idAccessPath = context(input.regularStore) { rhsValue.access.asIdPath() }
+                if (input.regularStore.getBorrows()
+                        .any { it.path.isPrefixOf(idAccessPath) }
+                ) silentExceptionReportContext(
+                    node.expression.tree!!
+                ) {
+                    throw InsufficientShallowPermissionBorrowedException(
+                        input.regularStore.getBorrows().first { it.path.isPrefixOf(idAccessPath) })
+                }
+
                 val (usedVariablePermission, _) = rhsValue.fieldPermission.split(targetAnnotation)
                 val targetId = Id.fromNode(target)
                 val borrow = Borrow(
-                    context(input.regularStore) { rhsValue.access.asIdPath() },
-                    usedVariablePermission.fraction,
-                    targetId
+                    idAccessPath, usedVariablePermission.fraction, targetId
                 )
                 val variablePermission =
                     context(input.regularStore, memberTypeAnalysis) { rhsValue.access.permission() }?.withId(targetId)

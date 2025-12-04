@@ -154,7 +154,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
     }
 
     fun getFieldMutability(field: VariableElement): Mutability? {
-        if (field.asType().kind.isPrimitive) return null
+        if (field.asType().kind.isPrimitive) return null // TODO: Ensure no annotation
         val fieldMutability = fieldCache.getOrPut(field) {
             val annotations = field.asType().annotationMirrors
             Mutability.fromAnnotationsOnType(annotations, TypesUtils.getTypeElement(field.asType()))
