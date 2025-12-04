@@ -17,6 +17,8 @@ public interface Rules {
         @Mutable Object m2;
         @Immutable int i1;
         @Immutable Object i2;
+
+        @Mutable A rec;
     }
 
     static void R1_a(@Mutable @Release Object x1) {
@@ -48,5 +50,30 @@ public interface Rules {
         @Immutable Object i2 = x1.i2; // TODO: Report mutability exception here
         // :: error: permission.insufficient.shallow
         ensureReadable(i2);
+    }
+
+    static void R4_a(@Mutable @Release A a) {
+        @Mutable Object x = a.m2;
+        ensureMutable(x);
+        // :: error: permission.insufficient.shallow.borrowed
+        @Mutable Object y = a.m2;
+        // :: error: permission.insufficient.shallow
+        ensureMutable(y);
+
+        ensureReadable(x);
+
+        @Mutable A b = a.rec.rec.rec.rec;
+        @Mutable Object x1 = a.rec.m2;
+        @Mutable Object x2 = a.rec.rec.m2;
+        @Mutable Object x3 = a.rec.rec.rec.m2;
+        // :: error: permission.insufficient.shallow.borrowed
+        @Mutable Object x4 = a.rec.rec.rec.rec.m2;
+        ensureMutable(x1);
+        ensureMutable(x2);
+        ensureMutable(x3);
+        // :: error: permission.insufficient.shallow
+        ensureMutable(x4);
+
+        ensureReadable(b);
     }
 }
