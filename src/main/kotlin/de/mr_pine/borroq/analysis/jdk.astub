@@ -9,3 +9,7 @@ public class Object {
 public class String {
     @Immutable String(@Immutable @Release String original);
 }
+
+public class Integer {
+    static @Immutable Integer valueOf(int i);
+}
