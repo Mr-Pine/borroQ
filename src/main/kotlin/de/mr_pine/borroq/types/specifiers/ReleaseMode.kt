@@ -15,7 +15,7 @@ sealed interface ReleaseMode {
     sealed interface SingleReleaseMode : ReleaseMode {
         val onPaths: List<PathTail>?
 
-        override fun pathsToSingleReleaseMode() = onPaths?.associateWith { this } ?: emptyMap()
+        override fun pathsToSingleReleaseMode() = onPaths?.associateWith { this } ?: mapOf(PathTail(emptyList()) to this)
 
         override fun checkForConflicts() {
             PathTail.checkForConflicts(onPaths ?: emptyList())

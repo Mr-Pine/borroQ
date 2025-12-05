@@ -7,7 +7,7 @@ import de.mr_pine.borroq.types.specifiers.Mutability
 
 context(memberTypeAnalysis: MemberTypeAnalysis)
 fun IdPath.fieldPermission(): Permission? {
-    val mutability = memberTypeAnalysis.getFieldMutability(tail.fields.last()) ?: return null
+    val mutability = memberTypeAnalysis.getFieldMutability(tail.fields.lastOrNull() ?: return null) ?: return null
     return when (mutability) { // TODO: Sanity check
         is Mutability.Mutable -> Permission(Rational.ONE)
         is Mutability.Immutable -> Permission(BorroQTransfer.ImmutableFraction)
@@ -27,7 +27,8 @@ context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
 fun Path.borrowedFieldPermission(): Permission? {
     val baseFieldPermission = fieldPermission()?.fraction ?: return null
     val idPath = this.asIdPath()
-    val borrowedAway = store.getBorrows().filter { it.path == idPath }.fold(Rational.ZERO) { acc, borrow -> acc + borrow.fraction }
+    val borrowedAway =
+        store.getBorrows().filter { it.path == idPath }.fold(Rational.ZERO) { acc, borrow -> acc + borrow.fraction }
     return Permission(baseFieldPermission - borrowedAway)
 }
 

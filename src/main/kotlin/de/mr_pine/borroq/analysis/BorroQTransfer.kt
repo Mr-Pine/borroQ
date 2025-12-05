@@ -235,7 +235,6 @@ class BorroQTransfer(
             val temporaryBorrows = mutableListOf<Borrow>()
 
             fun processReceiverOrParameter(type: SignatureType.ParameterType, basePath: Path) {
-                val releasePathMapping = type.releaseMode.pathsToSingleReleaseMode()
                 for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
                     val path = basePath.with(pathTail)
                     context(outputStore, outputStore.getBorrows(), memberTypeAnalysis) {
@@ -247,15 +246,15 @@ class BorroQTransfer(
                     }
                 }
 
-                for ((pathTail, releaseMode) in releasePathMapping.filterValues { it is SingleReleaseMode.Borrow || it is SingleReleaseMode.Move }) {
+                for ((pathTail, releaseMode) in type.releaseMode.pathsToSingleReleaseMode()
+                    .filterValues { it is SingleReleaseMode.Borrow || it is SingleReleaseMode.Move }) {
                     val path = basePath.with(pathTail)
                     val fraction = when (type.mutability) {
                         is Mutability.Mutable -> Rational.ONE
                         is Mutability.Immutable -> ImmutableFraction
                     }
-                    val tempBorrow =
-                        Borrow(context(input.regularStore) { path.asIdPath() }, fraction, Borrow.Identifier.Dummy)
-                    input.regularStore.addBorrow(tempBorrow)
+                    val tempBorrow = Borrow(context(outputStore) { path.asIdPath() }, fraction, Borrow.Identifier.Dummy)
+                    outputStore.addBorrow(tempBorrow)
 
                     if (releaseMode is SingleReleaseMode.Borrow) temporaryBorrows.add(tempBorrow)
                 }
@@ -273,8 +272,7 @@ class BorroQTransfer(
                 val receiverPath = Path.fromNode(node.target.receiver)
                 silentExceptionReportContext(receiverTree()) {
                     processReceiverOrParameter(
-                        methodType.receiverType,
-                        receiverPath
+                        methodType.receiverType, receiverPath
                     )
                 }
 
@@ -285,12 +283,11 @@ class BorroQTransfer(
 
             val argumentPermissions = node.arguments.zip(methodType.parameters).map { (arg, type) ->
                 if (type == null) return@map null
-                val permission =
-                    exceptionReportContext(arg.tree!!) {
-                        outputStore.chooseAndRemoveArgumentPermission(
-                            arg, type.mutability
-                        )
-                    }
+                val permission = exceptionReportContext(arg.tree!!) {
+                    outputStore.chooseAndRemoveArgumentPermission(
+                        arg, type.mutability
+                    )
+                }
 
                 silentExceptionReportContext(arg.tree!!) { processReceiverOrParameter(type, Path.fromNode(arg)) }
 
@@ -549,6 +546,53 @@ class BorroQTransfer(
         )
     }
 
+    //region return/exit
+    fun validateExit(store: BorroQStore, returnValue: BorroQValue?, reportTree: Tree) {
+        fun validateReleaseMode(baseId: Id, releaseMode: ReleaseMode) {
+            val pathsReleaseMapping = releaseMode.pathsToSingleReleaseMode()
+            for ((pathTail, releaseMode) in pathsReleaseMapping) {
+                val path = IdPath(baseId, pathTail)
+
+                when (releaseMode) {
+                    is SingleReleaseMode.Release, is SingleReleaseMode.Borrow -> {
+                        val permissionSum = store.localPermissionSum(baseId)
+                        val permissionTarget = when (signatureType.receiverType?.mutability) {
+                            is Mutability.Immutable -> ImmutableFraction
+                            is Mutability.Mutable -> Rational.ONE
+                            null -> Rational.ZERO
+                        }
+
+                        if (permissionTarget > permissionSum) silentExceptionReportContext(reportTree) {
+                            throw ReleasePermissionMissingException(baseId.name)
+                        }
+
+                        val borrowIdExclude: Borrow.Identifier? =
+                            if (releaseMode is SingleReleaseMode.Borrow) (returnValue as? IdentifiedPermission)?.id else null
+
+                        val conflictingPaths =
+                            store.getBorrows().filter { it.path.isPrefixOf(path) || path.isPrefixOf(it.path) }
+                                .filter { it.id != borrowIdExclude }
+                        if (conflictingPaths.isNotEmpty()) silentExceptionReportContext(reportTree) {
+                            val borrow = conflictingPaths.first()
+                            throw ReleaseBorrowConflictException(path, borrow.id, borrow.path)
+                        }
+                    }
+
+                    is SingleReleaseMode.Move -> {}
+                }
+            }
+        }
+
+        signatureType.receiverType?.let { validateReleaseMode(ThisId, it.releaseMode) }
+
+        for ((parameter, paramType) in parameters!!.zip(signatureType.parameters)) {
+            paramType ?: continue // primitive
+            val id = Id.fromNode(parameter)
+
+            validateReleaseMode(id, paramType.releaseMode)
+        }
+    }
+
     override fun visitReturn(
         node: ReturnNode, input: Input
     ): Result = try {
@@ -601,53 +645,12 @@ class BorroQTransfer(
                 }
             }
 
-            fun validateReleaseMode(baseId: Id, releaseMode: ReleaseMode) {
-                val pathsReleaseMapping = releaseMode.pathsToSingleReleaseMode()
-                for ((pathTail, releaseMode) in pathsReleaseMapping) {
-                    val path = IdPath(baseId, pathTail)
-
-                    when (releaseMode) {
-                        is SingleReleaseMode.Release, is SingleReleaseMode.Borrow -> {
-                            val permissionSum = input.regularStore.localPermissionSum(baseId)
-                            val permissionTarget = when (signatureType.receiverType?.mutability) {
-                                is Mutability.Immutable -> ImmutableFraction
-                                is Mutability.Mutable -> Rational.ONE
-                                null -> Rational.ZERO
-                            }
-
-                            if (permissionTarget > permissionSum) throw ReleasePermissionMissingException(baseId.name)
-
-                            val borrowIdExclude: Borrow.Identifier? =
-                                if (releaseMode is SingleReleaseMode.Borrow) (input.getValueOfSubNode(node.result) as? IdentifiedPermission)?.id else null
-
-                            val conflictingPaths = input.regularStore.getBorrows()
-                                .filter { it.path.isPrefixOf(path) || path.isPrefixOf(it.path) }
-                                .filter { it.id != borrowIdExclude }
-                            if (conflictingPaths.isNotEmpty()) {
-                                val borrow = conflictingPaths.first()
-                                throw ReleaseBorrowConflictException(path, borrow.id, borrow.path)
-                            }
-                        }
-
-                        is SingleReleaseMode.Move -> {}
-                    }
-                }
-            }
-
-            signatureType.receiverType?.let { validateReleaseMode(ThisId, it.releaseMode) }
-
-            for ((parameter, paramType) in parameters!!.zip(signatureType.parameters)) {
-                paramType ?: continue // primitive
-                val id = Id.fromNode(parameter)
-
-                validateReleaseMode(id, paramType.releaseMode)
-            }
-
-            node.regularResult(null, input.regularStore, false)
+            node.regularResult(input.getValueOfSubNode(node.result), input.regularStore, false)
         }
     } catch (_: BorroQReportedException) {
         node.regularResult(null, input.regularStore, false)
     }
+    //endregion
 
     override fun visitStringLiteral(
         node: StringLiteralNode, input: Input
