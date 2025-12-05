@@ -1,5 +1,8 @@
 package de.mr_pine.borroq.types
 
+import kotlin.math.abs
+import kotlin.math.sign
+
 data class Rational(val numerator: Int, val denominator: Int) : Comparable<Rational> {
 
     override fun toString() = "$numerator/$denominator"
@@ -35,8 +38,9 @@ data class Rational(val numerator: Int, val denominator: Int) : Comparable<Ratio
         }
 
         val gcd = calculateGCD(numerator, denominator)
+        val sign = numerator.sign * denominator.sign
 
-        return Rational(numerator / gcd, denominator / gcd)
+        return Rational(sign * abs(numerator / gcd), abs(denominator / gcd))
     }
 
     override fun compareTo(other: Rational) = (this - other).numerator
