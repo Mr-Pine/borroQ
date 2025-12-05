@@ -1,0 +1,6 @@
+- [ ] Variable access as arguments
+- [ ] On path restriction with invalid path, don't throw but report error and ignore
+- [ ] Better message for fields without mutability
+- [ ] Defaults
+- [ ] Ignore borrows/permission of variables that are never live
+- [ ] Allow `@Immutable(".m2") @Release`
