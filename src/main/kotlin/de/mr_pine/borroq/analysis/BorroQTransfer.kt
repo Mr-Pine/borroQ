@@ -327,10 +327,7 @@ class BorroQTransfer(
                         outputStore.recombine(argument, permission!!)
                     }
 
-                    is SingleReleaseMode.Move -> {
-                        TODO()
-                        outputStore.recombine(argument, permission!!)
-                    }
+                    is SingleReleaseMode.Move -> {}
                 }
             }
 
