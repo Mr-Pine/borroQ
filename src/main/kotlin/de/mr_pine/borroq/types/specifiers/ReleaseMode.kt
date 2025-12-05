@@ -27,23 +27,27 @@ sealed interface ReleaseMode {
     }
 
     data class Mixed(
-        val release: SingleReleaseMode.Release,
-        val borrow: SingleReleaseMode.Borrow,
-        val move: SingleReleaseMode.Move
+        val release: SingleReleaseMode.Release?,
+        val borrow: SingleReleaseMode.Borrow?,
+        val move: SingleReleaseMode.Move?
     ) : ReleaseMode {
         constructor(vararg releaseModes: SingleReleaseMode) : this(
-            releaseModes.filterIsInstance<SingleReleaseMode.Release>().single(),
-            releaseModes.filterIsInstance<SingleReleaseMode.Borrow>().single(),
-            releaseModes.filterIsInstance<SingleReleaseMode.Move>().single()
+            releaseModes.filterIsInstance<SingleReleaseMode.Release>().singleOrNull(),
+            releaseModes.filterIsInstance<SingleReleaseMode.Borrow>().singleOrNull(),
+            releaseModes.filterIsInstance<SingleReleaseMode.Move>().singleOrNull()
         )
 
         override fun checkForConflicts() {
-            PathTail.checkForConflicts(release.onPaths.orEmpty() + borrow.onPaths.orEmpty() + move.onPaths.orEmpty())
+            if (release?.onPaths?.isEmpty() == true || borrow?.onPaths?.isEmpty() == true || move?.onPaths?.isEmpty() == true) {
+                throw IllegalStateException("With mixed release modes, all specifiers must me restricted")
+            }
+            PathTail.checkForConflicts(release?.onPaths.orEmpty() + borrow?.onPaths.orEmpty() + move?.onPaths.orEmpty())
         }
 
 
         override fun pathsToSingleReleaseMode() =
-            release.pathsToSingleReleaseMode() + borrow.pathsToSingleReleaseMode() + move.pathsToSingleReleaseMode()
+            release?.pathsToSingleReleaseMode().orEmpty() + borrow?.pathsToSingleReleaseMode()
+                .orEmpty() + move?.pathsToSingleReleaseMode().orEmpty()
     }
 
     companion object {

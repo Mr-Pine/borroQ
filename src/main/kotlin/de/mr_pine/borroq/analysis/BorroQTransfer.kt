@@ -261,15 +261,22 @@ class BorroQTransfer(
                 }
             }
 
-            val receiverPermission = if (methodType.receiverType != null) exceptionReportContext(receiverTree()) {
-                val permission = when (node.target.receiver) {
-                    is ThisNode -> outputStore.chooseAndRemoveThisReceiverPermission(methodType.receiverType.mutability)
-                    else -> outputStore.chooseAndRemoveArgumentPermission(
-                        node.target.receiver, methodType.receiverType.mutability
-                    )
+            val receiverPermission = if (methodType.receiverType != null) {
+                val permission = exceptionReportContext(receiverTree()) {
+                    when (node.target.receiver) {
+                        is ThisNode -> outputStore.chooseAndRemoveThisReceiverPermission(methodType.receiverType.mutability)
+                        else -> outputStore.chooseAndRemoveArgumentPermission(
+                            node.target.receiver, methodType.receiverType.mutability
+                        )
+                    }
                 }
                 val receiverPath = Path.fromNode(node.target.receiver)
-                processReceiverOrParameter(methodType.receiverType, receiverPath)
+                silentExceptionReportContext(receiverTree()) {
+                    processReceiverOrParameter(
+                        methodType.receiverType,
+                        receiverPath
+                    )
+                }
 
                 permission
             } else {
@@ -278,15 +285,16 @@ class BorroQTransfer(
 
             val argumentPermissions = node.arguments.zip(methodType.parameters).map { (arg, type) ->
                 if (type == null) return@map null
-                exceptionReportContext(arg.tree!!) {
-                    val permission = outputStore.chooseAndRemoveArgumentPermission(
-                        arg, type.mutability
-                    )
+                val permission =
+                    exceptionReportContext(arg.tree!!) {
+                        outputStore.chooseAndRemoveArgumentPermission(
+                            arg, type.mutability
+                        )
+                    }
 
-                    processReceiverOrParameter(type, Path.fromNode(arg))
+                silentExceptionReportContext(arg.tree!!) { processReceiverOrParameter(type, Path.fromNode(arg)) }
 
-                    permission
-                }
+                permission
             }
 
             /*
@@ -297,14 +305,32 @@ class BorroQTransfer(
                 val (x, y) = p
                 Triple(x, y, z)
             }
+
+            val freeBorrows = mutableListOf<BorroQValue.FreePermission.FreeBorrow>()
             for ((argument, type, permission) in argumentData) {
                 when (type?.releaseMode) {
                     null -> {}
-                    is SingleReleaseMode.Release if type.releaseMode.onPaths.orEmpty().isEmpty() -> {
+                    is ReleaseMode.Mixed -> {
                         outputStore.recombine(argument, permission!!)
                     }
 
-                    else -> TODO()
+                    is SingleReleaseMode if type.releaseMode.onPaths.orEmpty().isNotEmpty() -> {
+                        outputStore.recombine(argument, permission!!)
+                    }
+
+                    is SingleReleaseMode.Release -> {
+                        outputStore.recombine(argument, permission!!)
+                    }
+
+                    is SingleReleaseMode.Borrow -> {
+                        freeBorrows.add(TODO(), TODO())
+                        outputStore.recombine(argument, permission!!)
+                    }
+
+                    is SingleReleaseMode.Move -> {
+                        TODO()
+                        outputStore.recombine(argument, permission!!)
+                    }
                 }
             }
 
@@ -315,7 +341,7 @@ class BorroQTransfer(
                 }
             }
 
-            val freeBorrows = buildList {
+            freeBorrows.run {
                 for (borrow in temporaryBorrows) {
                     outputStore.removeBorrow(borrow)
                     add(BorroQValue.FreePermission.FreeBorrow(borrow.path, borrow.fraction))
