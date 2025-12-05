@@ -6,7 +6,7 @@ import org.junit.runners.Parameterized
 import java.io.File
 
 @TestRootDirectory("src/test/java/testcases")
-class BorroQTest(testFile: File?) : CheckerFrameworkPerFileTest(
+class BorroQTest(testFile: File) : CheckerFrameworkPerFileTest(
     testFile,
     BorroQChecker::class.java,
     "de/mr_pine/borroq",
@@ -21,6 +21,6 @@ class BorroQTest(testFile: File?) : CheckerFrameworkPerFileTest(
         @JvmStatic
         @get:Parameterized.Parameters
         val testDirs: Array<String?>
-            get() = arrayOf("borroq")
+            get() = arrayOf("borroq/rules")
     }
 }

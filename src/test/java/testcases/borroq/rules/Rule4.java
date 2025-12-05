@@ -1,0 +1,34 @@
+package testcases.borroq.rules;
+
+import de.mr_pine.borroq.qual.mutability.Immutable;
+import de.mr_pine.borroq.qual.mutability.Mutable;
+import de.mr_pine.borroq.qual.release.Release;
+
+import static testcases.borroq.rules.RuleUtil.*;
+
+public interface Rule4 {
+    static void a(@Mutable @Release A a) {
+        @Mutable Object x = a.m2;
+        ensureMutable(x);
+        // :: error: permission.insufficient.shallow.borrowed
+        @Mutable Object y = a.m2;
+        // :: error: permission.insufficient.shallow
+        ensureMutable(y);
+
+        ensureReadable(x);
+
+        @Mutable A b = a.rec.rec.rec.rec;
+        @Mutable Object x1 = a.rec.m2;
+        @Mutable Object x2 = a.rec.rec.m2;
+        @Mutable Object x3 = a.rec.rec.rec.m2;
+        // :: error: permission.insufficient.shallow.borrowed
+        @Mutable Object x4 = a.rec.rec.rec.rec.m2;
+        ensureMutable(x1);
+        ensureMutable(x2);
+        ensureMutable(x3);
+        // :: error: permission.insufficient.shallow
+        ensureMutable(x4);
+
+        ensureReadable(b);
+    }
+}
