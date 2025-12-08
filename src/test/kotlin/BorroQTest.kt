@@ -21,6 +21,6 @@ class BorroQTest(testFile: File) : CheckerFrameworkPerFileTest(
         @JvmStatic
         @get:Parameterized.Parameters
         val testDirs: Array<String?>
-            get() = arrayOf("borroq/rules")
+            get() = arrayOf("borroq")
     }
 }
