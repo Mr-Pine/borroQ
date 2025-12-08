@@ -47,6 +47,7 @@ public interface Rule5 {
     static void e(@Mutable @Move A a) {
         moveImmutAAway(a);
         ensureReadable(a);
+        // :: error: permission.insufficient.deep
         // :: error: permission.insufficient.shallow
         ensureMutable(a);
     }

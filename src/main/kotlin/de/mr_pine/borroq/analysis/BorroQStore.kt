@@ -46,19 +46,7 @@ class BorroQStore constructor(
 
         val (split, remaining) = when (availablePermission) {
             is VariablePermission.Top -> throw TopPermissionEncounteredException(argument.toString())
-            is IdentifiedPermission -> {
-                when (shallowMutability) {
-                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientShallowPermissionException(
-                        argument.toString(), shallowMutability, availablePermission
-                    )
-
-                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientShallowPermissionException(
-                        argument.toString(), shallowMutability, availablePermission
-                    )
-                }
-
-                availablePermission.split(shallowMutability)
-            }
+            is IdentifiedPermission -> availablePermission.split(shallowMutability)
         }
 
         updatePermission(argument, remaining)
@@ -66,25 +54,12 @@ class BorroQStore constructor(
         return split
     }
 
-    @Throws(InsufficientShallowPermissionException::class, TopPermissionEncounteredException::class)
     fun chooseAndRemoveThisReceiverPermission(mutability: Mutability): VariablePermission {
         val availablePermission = thisPermission
 
         val (split, remaining) = when (availablePermission) {
             is VariablePermission.Top -> throw TopPermissionEncounteredException("this")
-            is IdentifiedPermission -> {
-                when (mutability) {
-                    is Mutability.Mutable -> if (!availablePermission.hasShallowMutability) throw InsufficientShallowPermissionException(
-                        "this", mutability, availablePermission
-                    )
-
-                    is Mutability.Immutable -> if (!availablePermission.hasShallowReadability) throw InsufficientShallowPermissionException(
-                        "this", mutability, availablePermission
-                    )
-                }
-
-                availablePermission.split(mutability)
-            }
+            is IdentifiedPermission -> availablePermission.split(mutability)
 
             null -> throw IllegalStateException("No this permission available")
         }
@@ -110,7 +85,9 @@ class BorroQStore constructor(
     }
 
     fun recombineAny(permission: IdentifiedPermission) {
-        val receiver = variablePermissions.filterValues { it is IdentifiedPermission && it.id == permission.id }.keys.firstOrNull() ?: return
+        val receiver =
+            variablePermissions.filterValues { it is IdentifiedPermission && it.id == permission.id }.keys.firstOrNull()
+                ?: return
         recombine(receiver, permission)
     }
 
