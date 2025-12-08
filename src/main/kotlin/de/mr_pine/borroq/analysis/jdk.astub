@@ -13,3 +13,9 @@ public class String {
 public class Integer {
     static @Immutable Integer valueOf(int i);
 }
+
+package java.util;
+
+public interface List<E> {
+    @Mutable E get(@Mutable @Borrow List<E> this, int index);
+}
