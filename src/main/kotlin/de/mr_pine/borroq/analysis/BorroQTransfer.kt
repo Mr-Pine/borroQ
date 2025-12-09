@@ -205,7 +205,7 @@ class BorroQTransfer(
     ): Result {
         require(!input.containsTwoStores()) { "Method invocation node $node has two stores" }
 
-        val methodType = memberTypeAnalysis.getType(node.target.method, exceptionReportingContext = { block ->
+        val methodType = memberTypeAnalysis.getType(node.target, exceptionReportingContext = { block ->
             try {
                 exceptionReportContext(node.tree!!, block)
             } catch (_: BorroQReportedException) {

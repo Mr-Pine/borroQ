@@ -40,5 +40,13 @@ sealed interface Mutability {
             return if (mutableAnnotation != null) Mutable(onPaths)
             else Immutable(onPaths)
         }
+
+        fun lower(first: Mutability, second: Mutability): Mutability {
+            require(first.onPaths == null || second.onPaths == null) { "Can not get lower of restricted mutabilities: ($first, $second)" }
+            return when {
+                first is Mutable && second is Mutable -> Mutable(null)
+                else -> Immutable(null)
+            }
+        }
     }
 }
