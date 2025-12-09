@@ -26,6 +26,7 @@ import javax.lang.model.element.ElementKind
 import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.VariableElement
 import javax.lang.model.type.TypeKind
+import kotlin.jvm.optionals.getOrNull
 
 class MemberTypeAnalysis(checker: BorroQChecker) {
 
@@ -69,7 +70,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             )
             val annotation = when (annot) {
                 is MarkerAnnotationExpr -> AnnotationBuilder.fromName(elements, typeElement.qualifiedName)!!
-                else -> null // TODO: Currently there are no values, but there will be
+                else -> TODO("Not a marker expr") // TODO: Currently there are no values, but there will be
             }
             annotation
         }
@@ -78,8 +79,19 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val returnMutability = Mutability.fromAnnotationsOnType(returnAnnotations, parentElement)
         require(returnMutability?.onPaths == null) { "Return mutability annotation cannot be restricted on paths" }
 
-        if (!callable.isStatic && !callable.isConstructorDeclaration) {
-            TODO("Non-static stubs")
+        val receiverType = if (!callable.isStatic && !callable.isConstructorDeclaration) {
+            val receiver =
+                callable.receiverParameter.getOrNull() ?: throw IllegalStateException("No receiver parameter specified")
+            val annotations = receiver.annotations.annotationElements()
+            val mutability =
+                Mutability.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
+                    ?: throw IllegalStateException("No mutability specified")
+            val releaseMode =
+                ReleaseMode.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
+                    ?: throw IllegalStateException("No release mode specified")
+            SignatureType.ParameterType(mutability, releaseMode)
+        } else {
+            null
         }
 
         val parameterTypes = callable.parameters.map {
@@ -88,13 +100,13 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val parameterAnnotations = it.annotations.annotationElements()
             val mutability =
                 Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: return null // throw IllegalStateException("No mutability specified")
+                    ?: throw IllegalStateException("No mutability specified")
             val releaseMode =
                 ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: return null // throw IllegalStateException("No release mode specified")
+                    ?: throw IllegalStateException("No release mode specified")
             SignatureType.ParameterType(mutability, releaseMode)
         }
-        val signatureType = SignatureType(returnMutability, null, parameterTypes)
+        val signatureType = SignatureType(returnMutability, receiverType, parameterTypes)
         signatureCache[element] = signatureType
         return signatureType
     }
