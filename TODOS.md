@@ -6,4 +6,4 @@
 - [ ] Allow `@Immutable(".m2") @Release`
 - [ ] Release mode to borrow to receiver? Would be useful for mutable data structures. Maybe automatically when primitive return value? May be counterintuitive.
 - [ ] Mutability polymorphism? Not sure whether that's really checkable
-- [ ] Borrow without field does not properly capture permission (see `Lists.getElement`)
+- [ ] Release free borrows when method call is statement

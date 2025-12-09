@@ -320,40 +320,37 @@ class BorroQTransfer(
              * Imaginary method execution here
              */
 
+
+            val receiverData = if (methodType.receiverType != null) listOf(
+                Triple(
+                    node.target.receiver.takeIf { it !is ThisNode },
+                    methodType.receiverType,
+                    receiverPermission!!
+                )
+            ) else emptyList()
+
             val argumentData = node.arguments.zip(methodType.parameters).zip(argumentPermissions).map { (p, z) ->
                 val (x, y) = p
                 Triple(x, y, z)
             }
 
             val freeBorrows = mutableListOf<BorroQValue.FreePermission.FreeBorrow>()
-            for ((argument, type, permission) in argumentData) {
+            for ((argument, type, permission) in argumentData + receiverData) {
                 when (type?.releaseMode) {
                     null -> {}
                     is ReleaseMode.Mixed -> {
-                        outputStore.recombine(argument, permission!!)
+                        outputStore.recombineNodeOrThis(argument, permission!!)
                     }
 
                     is SingleReleaseMode if type.releaseMode.onPaths.orEmpty().isNotEmpty() -> {
-                        outputStore.recombine(argument, permission!!)
+                        outputStore.recombineNodeOrThis(argument, permission!!)
                     }
 
                     is SingleReleaseMode.Release -> {
-                        outputStore.recombine(argument, permission!!)
+                        outputStore.recombineNodeOrThis(argument, permission!!)
                     }
 
-                    is SingleReleaseMode.Borrow -> {
-                        freeBorrows.add(TODO(), TODO())
-                        outputStore.recombine(argument, permission!!)
-                    }
-
-                    is SingleReleaseMode.Move -> {}
-                }
-            }
-
-            if (methodType.receiverType != null) {
-                when (node.target.receiver) {
-                    is ThisNode -> outputStore.recombineThis(receiverPermission!!)
-                    else -> outputStore.recombine(node.target.receiver, receiverPermission!!)
+                    is SingleReleaseMode.Borrow, is SingleReleaseMode.Move -> {}
                 }
             }
 
