@@ -7,3 +7,4 @@
 - [ ] Release mode to borrow to receiver? Would be useful for mutable data structures. Maybe automatically when primitive return value? May be counterintuitive.
 - [ ] Mutability polymorphism? Not sure whether that's really checkable
 - [ ] Release free borrows when method call is statement
+- [ ] Only report one of `permission.insufficient.{shallow,deep}`
