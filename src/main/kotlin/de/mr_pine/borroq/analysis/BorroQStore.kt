@@ -11,6 +11,7 @@ import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
 import org.checkerframework.dataflow.expression.FieldAccess
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
+import org.checkerframework.dataflow.expression.ValueLiteral
 
 /**
  * Stores the permissions of local variables and the this receiver as well as the borrow list.
@@ -18,7 +19,7 @@ import org.checkerframework.dataflow.expression.LocalVariable
  * @param thisPermission The permission of the this receiver. Null if the method is static/a constructor.
  * @param borrowList A list of borrows.
  */
-class BorroQStore constructor(
+data class BorroQStore(
     private val variablePermissions: MutableMap<LocalVariable, VariablePermission>,
     private var thisPermission: VariablePermission?,
     private val borrowList: MutableList<Borrow>
@@ -38,10 +39,11 @@ class BorroQStore constructor(
     }
 
     @Throws(InsufficientShallowPermissionException::class, TopPermissionEncounteredException::class)
-    fun chooseAndRemoveArgumentPermission(argument: Node, shallowMutability: Mutability): VariablePermission {
+    fun chooseAndRemoveArgumentPermission(argument: Node, shallowMutability: Mutability): VariablePermission? {
         val availablePermission = when (val expression = JavaExpression.fromNode(argument)) {
             is LocalVariable -> variablePermissions[expression]!!
-            else -> TODO("non local-var argument")
+            is ValueLiteral -> return null
+            else -> TODO("non local-var argument: $expression ${expression.javaClass}")
         }
 
         val (split, remaining) = when (availablePermission) {
@@ -98,7 +100,8 @@ class BorroQStore constructor(
         require(thisPermission is IdentifiedPermission) { "Cannot recombine with non-identified permission" }
         require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
         require((thisPermission as IdentifiedPermission).id == permission.id) {
-            "Cannot recombine permissions with different ids: $thisPermission, $permission" }
+            "Cannot recombine permissions with different ids: $thisPermission, $permission"
+        }
         thisPermission = (thisPermission as IdentifiedPermission).recombineFractional(permission)
     }
 
@@ -175,8 +178,8 @@ class BorroQStore constructor(
     override fun leastUpperBound(other: BorroQStore?): BorroQStore {
         other!!
         val combinedLocalPermissions = variablePermissions.keys.union(other.variablePermissions.keys).associateWith {
-            val permissionA = variablePermissions[it]!!
-            val permissionB = variablePermissions[it]!!
+            val permissionA = variablePermissions[it] ?: VariablePermission.Top // TODO: Can we just ignore them?
+            val permissionB = variablePermissions[it] ?: VariablePermission.Top
 
             permissionA.combine(permissionB)
         }

@@ -256,6 +256,24 @@ class BorroQTransfer(
             }
         }
 
+        fun VariablePermission?.validateMutability(tree: Tree, mutability: Mutability) = also {
+            silentExceptionReportContext(tree) {
+                when (mutability) {
+                    is Mutability.Mutable -> if (!(it?.hasShallowMutability
+                            ?: false)
+                    ) throw InsufficientShallowPermissionException(
+                        "this", mutability, it
+                    )
+
+                    is Mutability.Immutable -> if (!(it?.hasShallowReadability
+                            ?: true)
+                    ) throw InsufficientShallowPermissionException(
+                        "this", mutability, it
+                    )
+                }
+            }
+        }
+
         try {
             val receiverPermission = if (methodType.receiverType != null) {
                 val permission = exceptionReportContext(receiverTree) {
@@ -264,20 +282,7 @@ class BorroQTransfer(
                         else -> outputStore.chooseAndRemoveArgumentPermission(
                             node.target.receiver, methodType.receiverType.mutability
                         )
-                    }.also {
-                        silentExceptionReportContext(receiverTree) {
-
-                            when (methodType.receiverType.mutability) {
-                                is Mutability.Mutable -> if (!it.hasShallowMutability) throw InsufficientShallowPermissionException(
-                                    "this", methodType.receiverType.mutability, it
-                                )
-
-                                is Mutability.Immutable -> if (!it.hasShallowReadability) throw InsufficientShallowPermissionException(
-                                    "this", methodType.receiverType.mutability, it
-                                )
-                            }
-                        }
-                    }
+                    }.validateMutability(receiverTree, methodType.receiverType.mutability)
                 }
                 val receiverPath = Path.fromNode(node.target.receiver)
                 silentExceptionReportContext(receiverTree) {
@@ -296,19 +301,7 @@ class BorroQTransfer(
                 val permission = exceptionReportContext(arg.tree!!) {
                     outputStore.chooseAndRemoveArgumentPermission(
                         arg, type.mutability
-                    ).also {
-                        silentExceptionReportContext(receiverTree) {
-                            when (type.mutability) {
-                                is Mutability.Mutable -> if (!it.hasShallowMutability) throw InsufficientShallowPermissionException(
-                                    "this", type.mutability, it
-                                )
-
-                                is Mutability.Immutable -> if (!it.hasShallowReadability) throw InsufficientShallowPermissionException(
-                                    "this", type.mutability, it
-                                )
-                            }
-                        }
-                    }
+                    ).validateMutability(arg.tree!!, type.mutability)
                 }
 
                 silentExceptionReportContext(arg.tree!!) { processReceiverOrParameter(type, Path.fromNode(arg)) }

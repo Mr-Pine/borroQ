@@ -112,10 +112,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val annotations = receiver.annotations.annotationElements()
             val mutability =
                 Mutability.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: throw IllegalStateException("No mutability specified")
+                    ?: throw IllegalStateException("No mutability specified for receiver of ${callable.name.asString()}")
             val releaseMode =
                 ReleaseMode.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: throw IllegalStateException("No release mode specified")
+                    ?: throw IllegalStateException("No release mode specified for receiver of ${callable.name.asString()}")
             SignatureType.ParameterType(mutability, releaseMode)
         } else {
             null
@@ -151,27 +151,27 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val returnMutability = if (isConstructor) {
             Mutability.fromAnnotationsOnType(constructorTypeAnnotations!!, null)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
+                ?: throw IllegalStateException("No mutability specified for type of constructor $methodName$methodType") // Mutability.Companion.Defaults.returnType
         } else if (methodType.restype.kind.isPrimitive || methodType.restype.kind == TypeKind.VOID) {
             null
         } else {
             val annotations = methodType.restype.annotationMirrors
             Mutability.fromAnnotationsOnType(annotations, null)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No mutability specified") // Mutability.Companion.Defaults.returnType
+                ?: throw IllegalStateException("No mutability specified for return value of $methodName") // Mutability.Companion.Defaults.returnType
         }
 
-        val parameterTypes = methodType.argtypes.toList().map { arg ->
-            if (arg.kind.isPrimitive) {
+        val parameterTypes = methodType.argtypes.toList().map { argType ->
+            if (argType.kind.isPrimitive) {
                 return@map null
             }
-            val typeAnnotations = arg.annotationMirrors
+            val typeAnnotations = argType.annotationMirrors
 
-            val baseTypeElement = TypesUtils.getTypeElement(arg)
+            val baseTypeElement = TypesUtils.getTypeElement(argType)
 
             val mutability = Mutability.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No mutability specified")
+                ?: throw IllegalStateException("No mutability specified for parameter of $methodName of type $argType")
             val releaseMode = ReleaseMode.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
                 ?: throw IllegalStateException("No release mode specified")
@@ -182,7 +182,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val receiverType = if (isStatic || isConstructor) {
             null
         } else {
-            val baseTypeElement = TypesUtils.getTypeElement(methodType.recvtype)
+            val baseTypeElement = TypesUtils.getTypeElement(methodType.recvtype ?: throw IllegalStateException("No explicit receiver type specified for $methodName"))
             val receiverMutability = Mutability.fromAnnotationsOnType(
                 methodType.recvtype.annotationMirrors, baseTypeElement
             )?.also { exceptionReportingContext { it.checkForConflicts() } }
@@ -217,7 +217,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val fieldMutability = fieldCache.getOrPut(field) {
             val annotations = field.asType().annotationMirrors
             Mutability.fromAnnotationsOnType(annotations, TypesUtils.getTypeElement(field.asType()))
-                ?: throw IllegalStateException("No mutability for field specified")
+                ?: throw IllegalStateException("No mutability for field ${field.simpleName} specified")
         }
         require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
         return fieldMutability

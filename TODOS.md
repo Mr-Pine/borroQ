@@ -8,3 +8,6 @@
 - [ ] Mutability polymorphism? Not sure whether that's really checkable
 - [ ] Release free borrows when method call is statement
 - [ ] Only report one of `permission.insufficient.{shallow,deep}`
+- [ ] Verify override variance
+- [ ] Fall back to types of super method
+- [ ] Field stubs

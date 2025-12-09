@@ -4,18 +4,37 @@ import de.mr_pine.borroq.qual.release.*;
 
 public class Object {
     @Mutable Object();
+    boolean equals(@Immutable @Release Object this, @Immutable @Release Object other);
 }
 
 public class String {
     @Immutable String(@Immutable @Release String original);
+    char charAt(@Immutable @Release String this, int index);
+    @Immutable String substring(@Immutable @Release String this, int beginIndex);
+
+    static @Immutable String valueOf(char c);
+
+    boolean equals(@Immutable @Release String this, @Immutable @Release Object other);
 }
 
 public class Integer {
     static @Immutable Integer valueOf(int i);
+    static int parseInt(@Immutable @Release String s);
 }
 
 package java.util;
 
 public interface List<E> {
     @Mutable E get(@Mutable @Borrow List<E> this, int index);
+}
+
+public class System {
+    @Mutable public static final java.io.PrintStream out;
+}
+
+public class Scanner {
+
+    bool hasNextLine(@Immutable @Release Scanner this);
+    @Immutable String nextLine(@Mutable @Release Scanner this);
+    void close(@Mutable @Move Scanner this);
 }
