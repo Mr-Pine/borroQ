@@ -15,6 +15,7 @@ fun IdPath.display(): String {
 fun PathRoot.display() = when (this) {
     is PathRoot.LocalVariableRoot -> variable.toString()
     PathRoot.ThisPathRoot -> "this"
+    PathRoot.StaticPathRoot -> "<static class reference>"
 }
 
 fun Path.display(): String {

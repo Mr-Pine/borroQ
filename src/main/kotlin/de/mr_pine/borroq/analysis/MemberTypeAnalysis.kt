@@ -14,10 +14,7 @@ import de.mr_pine.borroq.isStatic
 import de.mr_pine.borroq.types.SignatureType
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.ReleaseMode
-import org.checkerframework.com.github.javaparser.ast.body.CallableDeclaration
-import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
-import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
-import org.checkerframework.com.github.javaparser.ast.body.TypeDeclaration
+import org.checkerframework.com.github.javaparser.ast.body.*
 import org.checkerframework.com.github.javaparser.ast.expr.AnnotationExpr
 import org.checkerframework.com.github.javaparser.ast.expr.MarkerAnnotationExpr
 import org.checkerframework.dataflow.cfg.node.MethodAccessNode
@@ -88,20 +85,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         }
         val element = identicalSimpleCallable.firstOrNull() ?: return null // No matching constructor found
 
-        fun List<AnnotationExpr>.annotationElements() = mapNotNull { annot ->
-            val simpleName = annot.nameAsString
-            val typeElement =
-                annotations[simpleName] ?: elements.getTypeElement(simpleName) ?: elements.getTypeElement(
-                    "java.lang.$simpleName"
-                )
-            val annotation = when (annot) {
-                is MarkerAnnotationExpr -> AnnotationBuilder.fromName(elements, typeElement.qualifiedName)!!
-                else -> TODO("Not a marker expr") // TODO: Currently there are no values, but there will be
-            }
-            annotation
-        }
-
-        val returnAnnotations = callable.annotations.annotationElements()
+        val returnAnnotations = callable.annotations.annotationElements(annotations)
         val returnMutability = Mutability.fromAnnotationsOnType(returnAnnotations, parentElement)
         require(returnMutability?.onPaths == null) { "Return mutability annotation cannot be restricted on paths" }
 
@@ -109,7 +93,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val receiver =
                 callable.receiverParameter.getOrNull()
                     ?: throw IllegalStateException("No receiver parameter specified")
-            val annotations = receiver.annotations.annotationElements()
+            val annotations = receiver.annotations.annotationElements(annotations)
             val mutability =
                 Mutability.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
                     ?: throw IllegalStateException("No mutability specified for receiver of ${callable.name.asString()}")
@@ -124,7 +108,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val parameterTypes = callable.parameters.map {
             if (it.type.isPrimitiveType) return@map null
 
-            val parameterAnnotations = it.annotations.annotationElements()
+            val parameterAnnotations = it.annotations.annotationElements(annotations)
             val mutability =
                 Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)
                     ?.also { it.checkForConflicts() }
@@ -182,7 +166,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val receiverType = if (isStatic || isConstructor) {
             null
         } else {
-            val baseTypeElement = TypesUtils.getTypeElement(methodType.recvtype ?: throw IllegalStateException("No explicit receiver type specified for $methodName"))
+            val baseTypeElement = TypesUtils.getTypeElement(
+                methodType.recvtype
+                    ?: throw IllegalStateException("No explicit receiver type specified for $methodName")
+            )
             val receiverMutability = Mutability.fromAnnotationsOnType(
                 methodType.recvtype.annotationMirrors, baseTypeElement
             )?.also { exceptionReportingContext { it.checkForConflicts() } }
@@ -221,5 +208,36 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         }
         require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
         return fieldMutability
+    }
+
+    fun getFieldMutability(field: FieldDeclaration, importMap: StubManager.ImportMap) {
+        val parent = field.parentNode.get() as TypeDeclaration<*>
+        val fqnParentName = parent.fullyQualifiedName.get()
+        val parentElement = elements.getTypeElement(fqnParentName)
+            ?: throw IllegalStateException("Could not find parent element $fqnParentName of field $field")
+
+        val fieldElement = ElementUtils.findFieldInType(parentElement, field.variables.single().nameAsString)
+            ?: throw IllegalStateException("Could not find field ${field.variables.single().nameAsString} in parent element $fqnParentName")
+        val fieldMutability = fieldCache.getOrPut(fieldElement) {
+            val annotations = field.annotations.annotationElements(importMap)
+            val fqTypeName = field.commonType.toClassOrInterfaceType().get().nameWithScope
+            val fieldTypeElement = elements.getTypeElement(fqTypeName)
+            Mutability.fromAnnotationsOnType(annotations, fieldTypeElement)
+                ?: throw IllegalStateException("No mutability for field $field specified")
+        }
+        require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
+    }
+
+    private fun List<AnnotationExpr>.annotationElements(importMap: StubManager.ImportMap) = mapNotNull { annot ->
+        val simpleName = annot.nameAsString
+        val typeElement =
+            importMap[simpleName] ?: elements.getTypeElement(simpleName) ?: elements.getTypeElement(
+                "java.lang.$simpleName"
+            )
+        val annotation = when (annot) {
+            is MarkerAnnotationExpr -> AnnotationBuilder.fromName(elements, typeElement.qualifiedName)!!
+            else -> TODO("Not a marker expr") // TODO: Currently there are no values, but there will be
+        }
+        annotation
     }
 }

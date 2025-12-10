@@ -43,6 +43,7 @@ data class BorroQStore(
         val availablePermission = when (val expression = JavaExpression.fromNode(argument)) {
             is LocalVariable -> variablePermissions[expression]!!
             is ValueLiteral -> return null
+            is FieldAccess if Path.fromNode(argument).root == PathRoot.StaticPathRoot -> return Permission(Rational.HALF).withId(Id("<<static>>")) // TODO: This is not great
             else -> TODO("non local-var argument: $expression ${expression.javaClass}")
         }
 
@@ -85,7 +86,8 @@ data class BorroQStore(
         require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
         when (val expression = JavaExpression.fromNode(receiver)) {
             is LocalVariable -> recombine(expression, permission)
-            else -> TODO()
+            is FieldAccess if Path.fromNode(receiver).isStatic -> {}
+            else -> TODO("Recombine receiver $expression of type ${expression.javaClass}")
         }
     }
 

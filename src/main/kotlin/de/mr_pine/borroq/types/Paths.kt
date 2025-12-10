@@ -2,16 +2,14 @@ package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.analysis.BorroQStore
 import de.mr_pine.borroq.analysis.exceptions.ConflictingPathRestrictionsException
-import org.checkerframework.dataflow.cfg.node.FieldAccessNode
-import org.checkerframework.dataflow.cfg.node.LocalVariableNode
-import org.checkerframework.dataflow.cfg.node.Node
-import org.checkerframework.dataflow.cfg.node.ThisNode
+import org.checkerframework.dataflow.cfg.node.*
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
 import javax.lang.model.element.VariableElement
 
 sealed interface PathRoot {
     data object ThisPathRoot : PathRoot
+    data object StaticPathRoot : PathRoot
 
     @JvmInline
     value class LocalVariableRoot(val variable: LocalVariable) : PathRoot
@@ -19,6 +17,7 @@ sealed interface PathRoot {
     context(store: BorroQStore)
     fun toId() = when (this) {
         is ThisPathRoot -> (store.queryThisPermission() as IdentifiedPermission).id
+        is StaticPathRoot -> throw IllegalStateException("Static path root cannot be converted to id")
         is LocalVariableRoot -> (store.queryPermission(variable) as IdentifiedPermission).id
     }
 }
@@ -47,6 +46,8 @@ data class Path(val root: PathRoot, val tail: PathTail) {
     fun with(field: VariableElement) = Path(root, PathTail(tail.fields + field))
     fun with(tail: PathTail) = Path(root, PathTail(this.tail.fields + tail.fields))
 
+    val isStatic: Boolean get() = root is PathRoot.StaticPathRoot && tail.fields.size == 1 // TODO: Remove special case
+
     companion object {
         fun fromNode(node: Node): Path = when (node) {
             is LocalVariableNode -> {
@@ -59,6 +60,8 @@ data class Path(val root: PathRoot, val tail: PathTail) {
                 val basePath = fromNode(node.receiver)
                 basePath.with(node.element)
             }
+
+            is ClassNameNode -> Path(PathRoot.StaticPathRoot)
 
             else -> throw IllegalStateException("Unexpected node type ${node.javaClass}")
         }

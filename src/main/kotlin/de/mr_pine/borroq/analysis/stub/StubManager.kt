@@ -3,6 +3,7 @@ package de.mr_pine.borroq.analysis.stub
 import de.mr_pine.borroq.analysis.MemberTypeAnalysis
 import org.checkerframework.com.github.javaparser.ast.StubUnit
 import org.checkerframework.com.github.javaparser.ast.body.ConstructorDeclaration
+import org.checkerframework.com.github.javaparser.ast.body.FieldDeclaration
 import org.checkerframework.com.github.javaparser.ast.body.MethodDeclaration
 import org.checkerframework.com.github.javaparser.ast.visitor.GenericVisitorAdapter
 import org.checkerframework.framework.qual.StubFiles
@@ -147,6 +148,14 @@ class StubManager(
             method: MethodDeclaration, arg: ImportMap?
         ): Nothing? {
             signatureAnalysis.getType(method, arg!!)
+            return null
+        }
+
+        override fun visit(
+            field: FieldDeclaration,
+            arg: ImportMap?
+        ): Nothing? {
+            signatureAnalysis.getFieldMutability(field, arg!!)
             return null
         }
     }

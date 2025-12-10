@@ -20,6 +20,7 @@ fun Path.fieldPermission(): Permission? = IdPath(Id(""), tail).fieldPermission()
 context(store: BorroQStore)
 fun Path.rootPermission() = when (root) {
     is PathRoot.ThisPathRoot -> store.queryThisPermission() as Permission
+    is PathRoot.StaticPathRoot -> throw IllegalStateException("Static path root cannot be converted to permission")
     is PathRoot.LocalVariableRoot -> store.queryPermission(root.variable) as Permission
 }
 

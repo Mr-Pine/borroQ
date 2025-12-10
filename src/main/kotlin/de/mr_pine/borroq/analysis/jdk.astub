@@ -22,14 +22,20 @@ public class Integer {
     static int parseInt(@Immutable @Release String s);
 }
 
+public class System {
+    @Mutable public static final java.io.PrintStream out;
+}
+
+package java.io;
+
+public class PrintStream {
+    void println(@Immutable @Release PrintStream this, @Immutable @Release String str); // TODO: This should probably be @Mutable
+}
+
 package java.util;
 
 public interface List<E> {
     @Mutable E get(@Mutable @Borrow List<E> this, int index);
-}
-
-public class System {
-    @Mutable public static final java.io.PrintStream out;
 }
 
 public class Scanner {

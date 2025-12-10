@@ -231,6 +231,8 @@ class BorroQTransfer(
         val temporaryBorrows = mutableListOf<Borrow>()
 
         fun processReceiverOrParameter(type: SignatureType.ParameterType, basePath: Path) {
+            if (basePath.isStatic) return
+
             for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
                 val path = basePath.with(pathTail)
                 context(outputStore, outputStore.getBorrows(), memberTypeAnalysis) {
@@ -526,7 +528,9 @@ class BorroQTransfer(
 
             is ThisNode -> Path(PathRoot.ThisPathRoot)
             is LocalVariableNode -> Path(PathRoot.LocalVariableRoot(JavaExpression.fromNode(node.receiver) as LocalVariable))
-            else -> throw IllegalStateException("Unexpected receiver type ${node.receiver}")
+
+            is ClassNameNode -> Path(PathRoot.StaticPathRoot)
+            else -> throw IllegalStateException("Unexpected receiver type ${node.receiver} ${node.receiver.javaClass}")
         }
 
         val path = receiverPath.with(node.element)
@@ -609,8 +613,9 @@ class BorroQTransfer(
         node: ReturnNode, input: Input
     ): Result = try {
         exceptionReportContext(node.tree!!) {
+            if (signatureType.returnMutability == null) return node.regularResult(null, input.regularStore, false)
             require(!input.containsTwoStores()) { "Return node $node with two stores" }
-            require(signatureType.returnMutability!!.onPaths == null) { "Return type cannot be restricted on paths" }
+            require(signatureType.returnMutability.onPaths == null) { "Return type cannot be restricted on paths" }
 
             if (node.result == null) return node.regularResult(null, input.regularStore, false)
 
@@ -619,6 +624,7 @@ class BorroQTransfer(
                     is BorroQValue.FieldAccess -> {
                         val idPath = context(input.regularStore) { it.access.asIdPath() }
                         val base = when (it.access.root) {
+                            is PathRoot.StaticPathRoot -> TODO("Static field access in return is not supported")
                             is PathRoot.ThisPathRoot -> input.regularStore.queryThisPermission()!!
                             is PathRoot.LocalVariableRoot -> input.regularStore.queryPermission(it.access.root.variable)!!
                         }
