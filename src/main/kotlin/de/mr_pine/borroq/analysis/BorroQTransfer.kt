@@ -696,6 +696,20 @@ class BorroQTransfer(
         return doNothing(n, p)
     }
 
+    override fun visitMarker(
+        n: MarkerNode,
+        p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitTernaryExpression(
+        n: TernaryExpressionNode,
+        p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
     override fun visitNumericalPlus(
         n: NumericalPlusNode, p: Input
     ): Result {
@@ -704,6 +718,27 @@ class BorroQTransfer(
 
     override fun visitNumericalAddition(
         n: NumericalAdditionNode, p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitLessThan(
+        n: LessThanNode,
+        p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitIntegerRemainder(
+        n: IntegerRemainderNode,
+        p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
+    override fun visitEqualTo(
+        n: EqualToNode,
+        p: Input
     ): Result {
         return doNothing(n, p)
     }
