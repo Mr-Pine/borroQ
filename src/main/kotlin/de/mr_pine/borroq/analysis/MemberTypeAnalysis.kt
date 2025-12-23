@@ -21,10 +21,7 @@ import org.checkerframework.dataflow.cfg.node.MethodAccessNode
 import org.checkerframework.javacutil.AnnotationBuilder
 import org.checkerframework.javacutil.ElementUtils
 import org.checkerframework.javacutil.TypesUtils
-import javax.lang.model.element.AnnotationMirror
-import javax.lang.model.element.ElementKind
-import javax.lang.model.element.ExecutableElement
-import javax.lang.model.element.VariableElement
+import javax.lang.model.element.*
 import javax.lang.model.type.TypeKind
 import kotlin.jvm.optionals.getOrNull
 
@@ -207,6 +204,9 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
                 ?: throw IllegalStateException("No mutability for field ${field.simpleName} specified")
         }
         require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
+        if (field.modifiers.contains(Modifier.STATIC)) {
+            require(fieldMutability is Mutability.Immutable) { "Static field ${field.simpleName} must be immutable" }
+        }
         return fieldMutability
     }
 
@@ -226,6 +226,9 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
                 ?: throw IllegalStateException("No mutability for field $field specified")
         }
         require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
+        if (field.isStatic) {
+            require(fieldMutability is Mutability.Immutable) { "Static field $field must be immutable" }
+        }
     }
 
     private fun List<AnnotationExpr>.annotationElements(importMap: StubManager.ImportMap) = mapNotNull { annot ->

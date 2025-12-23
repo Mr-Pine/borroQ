@@ -23,7 +23,7 @@ public class Integer {
 }
 
 public class System {
-    @Mutable public static final java.io.PrintStream out;
+    @Immutable public static final java.io.PrintStream out;
 }
 
 package java.io;
