@@ -88,8 +88,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
         val receiverType = if (!callable.isStatic && !callable.isConstructorDeclaration) {
             val receiver =
-                callable.receiverParameter.getOrNull()
-                    ?: throw IllegalStateException("No receiver parameter specified")
+                callable.receiverParameter.getOrNull() ?: throw IllegalStateException("No receiver parameter specified")
             val annotations = receiver.annotations.annotationElements(annotations)
             val mutability =
                 Mutability.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
@@ -107,12 +106,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
             val parameterAnnotations = it.annotations.annotationElements(annotations)
             val mutability =
-                Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)
-                    ?.also { it.checkForConflicts() }
+                Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
                     ?: throw IllegalStateException("No mutability specified")
             val releaseMode =
-                ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)
-                    ?.also { it.checkForConflicts() }
+                ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
                     ?: throw IllegalStateException("No release mode specified")
             SignatureType.ParameterType(mutability, releaseMode)
         }
@@ -132,14 +129,14 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val returnMutability = if (isConstructor) {
             Mutability.fromAnnotationsOnType(constructorTypeAnnotations!!, null)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No mutability specified for type of constructor $methodName$methodType") // Mutability.Companion.Defaults.returnType
+                ?: DefaultInference.inferConstructorReturnMutability()
         } else if (methodType.restype.kind.isPrimitive || methodType.restype.kind == TypeKind.VOID) {
             null
         } else {
             val annotations = methodType.restype.annotationMirrors
             Mutability.fromAnnotationsOnType(annotations, null)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No mutability specified for return value of $methodName") // Mutability.Companion.Defaults.returnType
+                ?: DefaultInference.inferReturnMutability()
         }
 
         val parameterTypes = methodType.argtypes.toList().map { argType ->
@@ -163,19 +160,21 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val receiverType = if (isStatic || isConstructor) {
             null
         } else {
-            val baseTypeElement = TypesUtils.getTypeElement(
-                methodType.recvtype
-                    ?: throw IllegalStateException("No explicit receiver type specified for $methodName")
-            )
-            val receiverMutability = Mutability.fromAnnotationsOnType(
-                methodType.recvtype.annotationMirrors, baseTypeElement
-            )?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No receiver mutability specified specified for $methodName")
-            val receiverReleaseMode =
-                ReleaseMode.fromAnnotationsOnType(methodType.recvtype.annotationMirrors, baseTypeElement)
+            val recvType = methodType.recvtype
+            val (receiverMutability, receiverReleaseMode) = if (recvType != null) {
+                val baseTypeElement = TypesUtils.getTypeElement(recvType)
+                val receiverMutability = Mutability.fromAnnotationsOnType(
+                    recvType.annotationMirrors, baseTypeElement
+                )?.also { exceptionReportingContext { it.checkForConflicts() } }
+                val receiverReleaseMode = ReleaseMode.fromAnnotationsOnType(recvType.annotationMirrors, baseTypeElement)
                     ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                    ?: throw IllegalStateException("No receiver release mode specified specified for $methodName")
-            SignatureType.ParameterType(receiverMutability, receiverReleaseMode)
+                receiverMutability to receiverReleaseMode
+            } else {
+                null to null
+            }
+            val mutability = receiverMutability ?: DefaultInference.inferReceiverMutability()
+            val releaseMode = receiverReleaseMode ?: DefaultInference.inferReceiverReleaseMode()
+            SignatureType.ParameterType(mutability, releaseMode)
         }
 
         return SignatureType(returnMutability, receiverType, parameterTypes)
@@ -192,8 +191,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
                 (executable as Symbol).rawTypeAttributes.filter { it.position.type == TargetType.METHOD_RETURN }
             } else null,
             executable.isStatic,
-            exceptionReportingContext
-        )
+            exceptionReportingContext)
     }
 
     fun getFieldMutability(field: VariableElement): Mutability? {
@@ -233,10 +231,9 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
     private fun List<AnnotationExpr>.annotationElements(importMap: StubManager.ImportMap) = mapNotNull { annot ->
         val simpleName = annot.nameAsString
-        val typeElement =
-            importMap[simpleName] ?: elements.getTypeElement(simpleName) ?: elements.getTypeElement(
-                "java.lang.$simpleName"
-            )
+        val typeElement = importMap[simpleName] ?: elements.getTypeElement(simpleName) ?: elements.getTypeElement(
+            "java.lang.$simpleName"
+        )
         val annotation = when (annot) {
             is MarkerAnnotationExpr -> AnnotationBuilder.fromName(elements, typeElement.qualifiedName)!!
             else -> TODO("Not a marker expr") // TODO: Currently there are no values, but there will be
