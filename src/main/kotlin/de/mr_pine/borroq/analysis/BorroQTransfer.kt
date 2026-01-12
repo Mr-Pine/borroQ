@@ -691,6 +691,16 @@ class BorroQTransfer(
         val ImmutableFraction = Rational.HALF
     }
 
+    override fun visitTypeCast(
+        n: TypeCastNode,
+        p: Input
+    ): Result {
+        if (n.type.kind.isPrimitive) {
+            return doNothing(n, p)
+        }
+        return visitNode(n, p)
+    }
+
     //region Noop visit functions
     override fun visitVariableDeclaration(
         n: VariableDeclarationNode, p: Input
