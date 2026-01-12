@@ -7,7 +7,7 @@ class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction
     override val hasShallowMutability: Boolean = fraction == Rational.ONE
     override val hasShallowReadability: Boolean = !fraction.isZero()
 
-    override fun split(hint: Mutability?): Pair<IdentifiedPermission, IdentifiedPermission> {
+    override fun split(hint: Mutability): Pair<IdentifiedPermission, IdentifiedPermission> {
         val (a, b) = super.split(hint)
         return a.withId(id) to b.withId(id)
     }

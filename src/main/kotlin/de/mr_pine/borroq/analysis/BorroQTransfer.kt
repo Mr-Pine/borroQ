@@ -393,7 +393,8 @@ class BorroQTransfer(
             }
 
             is IdentifiedPermission -> {
-                val (targetPermission, remainingPermission) = rhsValue.split(targetAnnotation)
+                val mutability = targetAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
+                val (targetPermission, remainingPermission) = rhsValue.split(mutability)
                 result(targetPermission) {
                     updatePermission(target, targetPermission)
                     when (node.expression) {
@@ -415,7 +416,8 @@ class BorroQTransfer(
                         input.regularStore.getBorrows().first { it.path.isPrefixOf(idAccessPath) })
                 }
 
-                val (usedVariablePermission, _) = rhsValue.fieldPermission.split(targetAnnotation)
+                val mutability = targetAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
+                val (usedVariablePermission, _) = rhsValue.fieldPermission.split(mutability)
                 val targetId = Id.fromNode(target)
                 val borrow = Borrow(
                     idAccessPath, usedVariablePermission.fraction, targetId
