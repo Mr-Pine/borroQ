@@ -22,4 +22,6 @@ object DefaultInference {
     fun inferReceiverReleaseMode(): ReleaseMode.SingleReleaseMode = ReleaseMode.SingleReleaseMode.Release(null)
 
     fun inferReturnMutability(): Mutability = Mutability.Immutable(null)
+
+    // TODO: Infer parameter mutability
 }
