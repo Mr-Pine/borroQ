@@ -395,6 +395,11 @@ class BorroQTransfer(
             is IdentifiedPermission -> {
                 val mutability = targetAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
                 val (targetPermission, remainingPermission) = rhsValue.split(mutability)
+
+                if (mutability is Mutability.Mutable && targetPermission.fraction < Rational.ONE) silentExceptionReportContext(node.tree!!) {
+                    throw InsufficientShallowPermissionException(target.name, mutability, targetPermission)
+                }
+
                 result(targetPermission) {
                     updatePermission(target, targetPermission)
                     when (node.expression) {
