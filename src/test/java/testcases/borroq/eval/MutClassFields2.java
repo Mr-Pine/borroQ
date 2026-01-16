@@ -24,7 +24,7 @@ public interface MutClassFields2 {
         @Mutable Box howHungry;
 
         void eat(@Immutable @Release Cat this) {
-            // :: error: permission.insufficient.shallow
+            // :: error: permission.insufficient.shallow.assignment.target.receiver
             meows.value = meows.value - 5;
         }
     }

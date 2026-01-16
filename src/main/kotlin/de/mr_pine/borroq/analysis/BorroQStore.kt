@@ -8,10 +8,7 @@ import de.mr_pine.borroq.types.specifiers.Mutability
 import org.checkerframework.dataflow.analysis.Store
 import org.checkerframework.dataflow.cfg.node.Node
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
-import org.checkerframework.dataflow.expression.FieldAccess
-import org.checkerframework.dataflow.expression.JavaExpression
-import org.checkerframework.dataflow.expression.LocalVariable
-import org.checkerframework.dataflow.expression.ValueLiteral
+import org.checkerframework.dataflow.expression.*
 
 /**
  * Stores the permissions of local variables and the this receiver as well as the borrow list.
@@ -138,7 +135,8 @@ data class BorroQStore(
     fun queryPermission(target: Node): VariablePermission? {
         return when (val expression = JavaExpression.fromNode(target)) {
             is LocalVariable -> queryPermission(expression)
-            else -> TODO()
+            is ThisReference -> thisPermission
+            else -> TODO("Querying permission for $expression of type ${expression.javaClass} not yet supported")
         }
     }
 

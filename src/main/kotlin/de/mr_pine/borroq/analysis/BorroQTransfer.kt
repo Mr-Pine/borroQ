@@ -22,6 +22,7 @@ import org.checkerframework.javacutil.ElementUtils
 import org.checkerframework.javacutil.TreeUtils
 import org.checkerframework.javacutil.TypesUtils
 import javax.lang.model.element.TypeElement
+import javax.lang.model.element.VariableElement
 import kotlin.contracts.ExperimentalContracts
 
 private typealias Result = TransferResult<BorroQValue, BorroQStore>
@@ -37,6 +38,12 @@ class BorroQTransfer(
 ) : AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<BorroQValue, BorroQStore> {
 
     private var parameters: List<LocalVariableNode>? = null
+
+    private val Mutability.fraction: Rational
+        get() = when (this) {
+            is Mutability.Mutable -> Rational.ONE
+            is Mutability.Immutable -> ImmutableFraction
+        }
 
     fun Node.regularResult(
         value: BorroQValue?, store: BorroQStore, storeChanged: Boolean = true
@@ -374,17 +381,32 @@ class BorroQTransfer(
             return node.regularResult(value, store)
         }
 
-        val targetAnnotation = target.tree?.let {
+        val targetMutabilityAnnotation = target.tree?.let {
             annotationQuery.getAssignmentLeftSideAnnotations(it)
                 ?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(target.type)) }
         }
-        require(targetAnnotation?.onPaths == null) { "Local variable mutability annotation cannot be restricted on paths" }
+        require(targetMutabilityAnnotation?.onPaths == null) { "Local variable mutability annotation cannot be restricted on paths" }
 
         return when (val rhsValue =
             input.getValueOfSubNode(node.expression) ?: return node.regularResult(null, input.regularStore, false)) {
             is BorroQValue.FreePermission -> {
                 val targetId = Id.fromNode(target)
-                val targetPermission = rhsValue.permission.withId(targetId)
+
+                val unfulfilledMutability =
+                    targetMutabilityAnnotation is Mutability.Mutable && rhsValue.permission.fraction < Rational.ONE
+                val unfulfilledReadability =
+                    targetMutabilityAnnotation is Mutability.Mutable && rhsValue.permission.fraction.isZero()
+                if (unfulfilledMutability || unfulfilledReadability) silentExceptionReportContext(
+                    node.expression.tree!!
+                ) {
+                    throw InsufficientShallowAssignmentExpressionPermissionException(
+                        node.expression, targetMutabilityAnnotation.fraction, rhsValue
+                    )
+                }
+
+                val targetPermission = IdentifiedPermission(
+                    rhsValue.permission.fraction * (targetMutabilityAnnotation?.fraction ?: Rational.ONE), targetId
+                )
                 val borrows = rhsValue.attachedBorrows.map { it.toBorrow(targetId) }
                 result(targetPermission) {
                     updatePermission(target, targetPermission)
@@ -393,10 +415,12 @@ class BorroQTransfer(
             }
 
             is IdentifiedPermission -> {
-                val mutability = targetAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
+                val mutability = targetMutabilityAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
                 val (targetPermission, remainingPermission) = rhsValue.split(mutability)
 
-                if (mutability is Mutability.Mutable && targetPermission.fraction < Rational.ONE) silentExceptionReportContext(node.tree!!) {
+                if (mutability is Mutability.Mutable && targetPermission.fraction < Rational.ONE) silentExceptionReportContext(
+                    node.tree!!
+                ) {
                     throw InsufficientShallowPermissionException(target.name, mutability, targetPermission)
                 }
 
@@ -421,7 +445,7 @@ class BorroQTransfer(
                         input.regularStore.getBorrows().first { it.path.isPrefixOf(idAccessPath) })
                 }
 
-                val mutability = targetAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
+                val mutability = targetMutabilityAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
                 val (usedVariablePermission, _) = rhsValue.fieldPermission.split(mutability)
                 val targetId = Id.fromNode(target)
                 val borrow = Borrow(
@@ -443,7 +467,42 @@ class BorroQTransfer(
         }
     }
 
+    context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
+    fun checkAssignability(receiver: Node, field: VariableElement) {
+        val receiverPath = Path.fromNode(receiver)
+        val receiverPathPermission = receiverPath.permission()
+            ?: throw IllegalStateException("Could not get permission for assignability check receiver $receiverPath")
+
+        if (receiverPathPermission.fraction < Rational.ONE) { // No shallow mutability
+            throw InsufficientShallowAssignmentTargetReceiverPermissionException(receiverPath, receiverPathPermission)
+        }
+
+        val receiverRootId = receiverPath.root.toId()
+        val accessPath = receiverPath.with(field)
+
+        if (receiverRootId in parameters!!.map { Id.fromNode(it) } + ThisId) {
+            // Ensure that the field we assign isn't hidden with scopes
+            val parameterIndex = parameters!!.indexOfFirst { Id.fromNode(it) == receiverRootId }.takeIf { it != -1 }
+            val parameterType = parameterIndex?.let { parameterIndex -> signatureType.parameters[parameterIndex]!! }
+                ?: signatureType.receiverType
+
+            val paths = parameterType?.mutability?.onPaths
+            if (paths != null) {
+                val hasPrefix = paths.any { it.isPrefixOf(accessPath.tail) }
+
+                if (!hasPrefix) {
+                    throw HiddenFieldAssignedException()
+                }
+            }
+        }
+    }
+
     fun visitFieldAssignment(node: AssignmentNode, target: FieldAccessNode, input: Input): Result {
+        context(
+            input.regularStore,
+            memberTypeAnalysis
+        ) { silentExceptionReportContext(target.tree!!) { checkAssignability(target.receiver, target.element) } }
+
         val fieldMutability = memberTypeAnalysis.getFieldMutability(target.element) ?: return node.regularResult(
             null, input.regularStore, false
         )
@@ -464,30 +523,14 @@ class BorroQTransfer(
             Rational.ONE to null
         }
 
-        val receiverPath = Path.fromNode(target.receiver)
-        val pathPermission =
-            context(input.regularStore, memberTypeAnalysis) { receiverPath.permission() }!!.withId(Id(""))
-
-        try {
-            if (!pathPermission.hasShallowMutability) exceptionReportContext(target.tree!!) {
-                throw InsufficientShallowAssignmentTargetReceiverPermissionException(receiverPath, pathPermission)
-            }
-
-            if (newValueFraction < fieldFraction) exceptionReportContext(node.tree!!) {
-                throw InsufficientShallowAssignmentExpressionPermissionException(
-                    node.expression, fieldFraction, newValuePermission
-                )
-            }
-
-            // Conflicting borrow special case for "hidden" fields
-            val hasConflictingBorrow =
-                input.regularStore.getBorrows().any { it.path == receiverPath && it.id == Borrow.Identifier.Dummy }
-            if (hasConflictingBorrow) exceptionReportContext(node.target.tree!!) {
-                throw HiddenFieldAssignedException()
-            }
-        } catch (_: BorroQReportedException) {
+        // TODO: Only enforce mutable -> newValueFraction = 1 ?
+        if (newValueFraction < fieldFraction) silentExceptionReportContext(node.tree!!) {
+            throw InsufficientShallowAssignmentExpressionPermissionException(
+                node.expression, fieldFraction, newValuePermission
+            )
         }
 
+        val receiverPath = Path.fromNode(target.receiver)
         input.regularStore.removeBorrowsWithPathPrefix(context(input.regularStore) {
             receiverPath.with(target.element).asIdPath()
         })

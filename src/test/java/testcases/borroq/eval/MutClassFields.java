@@ -27,7 +27,7 @@ public interface MutClassFields {
     default void main() {
         @Immutable Cat nyan = new Cat(new Box(52), new Box(99));
 
-        // :: error: permission.insufficient.shallow
+        // :: error: permission.insufficient.shallow.assignment.target.receiver
         nyan.howHungry.value = 0;
     }
 }
