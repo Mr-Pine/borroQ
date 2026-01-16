@@ -734,6 +734,13 @@ class BorroQTransfer(
         return doNothing(n, p)
     }
 
+    override fun visitNumericalSubtraction(
+        n: NumericalSubtractionNode,
+        p: Input
+    ): Result {
+        return doNothing(n, p)
+    }
+
     override fun visitLessThan(
         n: LessThanNode,
         p: Input
