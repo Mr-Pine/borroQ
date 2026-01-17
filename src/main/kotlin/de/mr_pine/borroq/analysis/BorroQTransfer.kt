@@ -206,6 +206,159 @@ class BorroQTransfer(
         return node.regularResult(null, p.regularStore, false)
     }
 
+    context(store: BorroQStore, temporaryBorrows: MutableList<Borrow>)
+    private fun processReceiverOrParameter(type: SignatureType.ParameterType, basePath: Path) {
+        if (basePath.isStatic) return
+
+        for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
+            val path = basePath.with(pathTail)
+            context(store, store.getBorrows(), memberTypeAnalysis) {
+                val allowsRequiredMutability = if (type.mutability is Mutability.Mutable) path.asIdPath()
+                    .allowsDeepMutability() else path.asIdPath().allowsDeepReadability()
+                if (!allowsRequiredMutability) {
+                    throw InsufficientDeepPermissionException(path, type.mutability)
+                }
+            }
+        }
+
+        for ((pathTail, releaseMode) in type.releaseMode.pathsToSingleReleaseMode()
+            .filterValues { it is SingleReleaseMode.Borrow || it is SingleReleaseMode.Move }) {
+            val path = basePath.with(pathTail)
+            val fraction = when (type.mutability) {
+                is Mutability.Mutable -> Rational.ONE
+                is Mutability.Immutable -> ImmutableFraction
+            }
+            val tempBorrow = Borrow(path.asIdPath(), fraction, Borrow.Identifier.Dummy)
+            store.addBorrow(tempBorrow)
+
+            if (releaseMode is SingleReleaseMode.Borrow) temporaryBorrows.add(tempBorrow)
+        }
+    }
+
+    private fun VariablePermission?.validateMutability(tree: Tree, mutability: Mutability) = also {
+        silentExceptionReportContext(tree) {
+            when (mutability) {
+                is Mutability.Mutable -> if (!(it?.hasShallowMutability
+                        ?: false)
+                ) throw InsufficientShallowPermissionException(
+                    "this", mutability, it
+                )
+
+                is Mutability.Immutable -> if (!(it?.hasShallowReadability
+                        ?: true)
+                ) throw InsufficientShallowPermissionException(
+                    "this", mutability, it
+                )
+            }
+        }
+    }
+
+    context(store: BorroQStore, tree: Tree, node: Node)
+    private fun processCallLike(
+        signature: SignatureType,
+        receiver: Node?,
+        arguments: List<Node>
+    ): RegularTransferResult<BorroQValue, BorroQStore> {
+        val temporaryBorrows = mutableListOf<Borrow>()
+        val receiverTree = receiver?.tree ?: tree
+        val returnPermission = signature.returnMutability?.let { Permission(it.fraction) }
+
+        try {
+            val receiverPermission = if (signature.receiverType != null) {
+                require(receiver != null) { "Receiver is null but non-null return type in signature: ${signature.receiverType}" }
+
+                val permission = exceptionReportContext(receiverTree) {
+                    when (receiver) {
+                        is ThisNode -> store.chooseAndRemoveThisReceiverPermission(signature.receiverType.mutability)
+                        else -> store.chooseAndRemoveArgumentPermission(
+                            receiver, signature.receiverType.mutability
+                        )
+                    }.validateMutability(receiverTree, signature.receiverType.mutability)
+                }
+                val receiverPath = Path.fromNode(receiver)
+                context(temporaryBorrows) {
+                    silentExceptionReportContext(receiverTree) {
+                        processReceiverOrParameter(
+                            signature.receiverType, receiverPath
+                        )
+                    }
+                }
+
+                permission
+            } else {
+                null
+            }
+
+            val argumentPermissions = arguments.zip(signature.parameters).map { (arg, type) ->
+                if (type == null) return@map null
+                val permission = exceptionReportContext(arg.tree!!) {
+                    store.chooseAndRemoveArgumentPermission(
+                        arg, type.mutability
+                    ).validateMutability(arg.tree!!, type.mutability)
+                }
+
+                context(temporaryBorrows) {
+                    silentExceptionReportContext(arg.tree!!) { processReceiverOrParameter(type, Path.fromNode(arg)) }
+                }
+
+                permission
+            }
+
+            /*
+             * Imaginary method execution here
+             */
+
+
+            val receiverData = if (signature.receiverType != null) listOf(
+                Triple(
+                    receiver.takeIf { it !is ThisNode },
+                    signature.receiverType,
+                    receiverPermission!!
+                )
+            ) else emptyList()
+
+            val argumentData = arguments.zip(signature.parameters).zip(argumentPermissions).map { (p, z) ->
+                val (x, y) = p
+                Triple(x, y, z)
+            }
+
+            val freeBorrows = mutableListOf<BorroQValue.FreePermission.FreeBorrow>()
+            for ((argument, type, permission) in argumentData + receiverData) {
+                when (type?.releaseMode) {
+                    null -> {}
+                    is ReleaseMode.Mixed -> {
+                        store.recombineNodeOrThis(argument, permission!!)
+                    }
+
+                    is SingleReleaseMode if type.releaseMode.onPaths.orEmpty().isNotEmpty() -> {
+                        store.recombineNodeOrThis(argument, permission!!)
+                    }
+
+                    is SingleReleaseMode.Release -> {
+                        store.recombineNodeOrThis(argument, permission!!)
+                    }
+
+                    is SingleReleaseMode.Borrow, is SingleReleaseMode.Move -> {}
+                }
+            }
+
+            freeBorrows.run {
+                for (borrow in temporaryBorrows) {
+                    store.removeBorrow(borrow)
+                    add(BorroQValue.FreePermission.FreeBorrow(borrow.path, borrow.fraction))
+                }
+            }
+
+            val freePermission = returnPermission?.let { BorroQValue.FreePermission(it, freeBorrows) }
+
+            return node.regularResult(freePermission, store)
+        } catch (_: BorroQReportedException) {
+            return node.regularResult(
+                returnPermission?.let { BorroQValue.FreePermission(it, emptyList()) }, store
+            )
+        }
+    }
+
 
     override fun visitMethodInvocation(
         node: MethodInvocationNode, input: Input
@@ -219,155 +372,17 @@ class BorroQTransfer(
             }
         })
 
-        val returnPermission = when (methodType.returnMutability) {
-            is Mutability.Mutable -> Permission(Rational.ONE)
-            is Mutability.Immutable -> Permission(ImmutableFraction)
-            null -> null
-        }
-
         if (node.target.method.isConstructor && methodType.returnMutability is Mutability.Immutable && signatureType.returnMutability is Mutability.Mutable) silentExceptionReportContext(
             node.tree!!
         ) {
             throw IncompatibleSuperConstructorMutability()
         }
 
-        val outputStore = input.regularStore
-
-        val receiverTree = node.target.receiver.tree ?: node.target.tree!!
-
-        val temporaryBorrows = mutableListOf<Borrow>()
-
-        fun processReceiverOrParameter(type: SignatureType.ParameterType, basePath: Path) {
-            if (basePath.isStatic) return
-
-            for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
-                val path = basePath.with(pathTail)
-                context(outputStore, outputStore.getBorrows(), memberTypeAnalysis) {
-                    val allowsRequiredMutability = if (type.mutability is Mutability.Mutable) path.asIdPath()
-                        .allowsDeepMutability() else path.asIdPath().allowsDeepReadability()
-                    if (!allowsRequiredMutability) {
-                        throw InsufficientDeepPermissionException(path, type.mutability)
-                    }
-                }
-            }
-
-            for ((pathTail, releaseMode) in type.releaseMode.pathsToSingleReleaseMode()
-                .filterValues { it is SingleReleaseMode.Borrow || it is SingleReleaseMode.Move }) {
-                val path = basePath.with(pathTail)
-                val fraction = when (type.mutability) {
-                    is Mutability.Mutable -> Rational.ONE
-                    is Mutability.Immutable -> ImmutableFraction
-                }
-                val tempBorrow = Borrow(context(outputStore) { path.asIdPath() }, fraction, Borrow.Identifier.Dummy)
-                outputStore.addBorrow(tempBorrow)
-
-                if (releaseMode is SingleReleaseMode.Borrow) temporaryBorrows.add(tempBorrow)
-            }
-        }
-
-        fun VariablePermission?.validateMutability(tree: Tree, mutability: Mutability) = also {
-            silentExceptionReportContext(tree) {
-                when (mutability) {
-                    is Mutability.Mutable -> if (!(it?.hasShallowMutability
-                            ?: false)
-                    ) throw InsufficientShallowPermissionException(
-                        "this", mutability, it
-                    )
-
-                    is Mutability.Immutable -> if (!(it?.hasShallowReadability
-                            ?: true)
-                    ) throw InsufficientShallowPermissionException(
-                        "this", mutability, it
-                    )
-                }
-            }
-        }
-
-        try {
-            val receiverPermission = if (methodType.receiverType != null) {
-                val permission = exceptionReportContext(receiverTree) {
-                    when (node.target.receiver) {
-                        is ThisNode -> outputStore.chooseAndRemoveThisReceiverPermission(methodType.receiverType.mutability)
-                        else -> outputStore.chooseAndRemoveArgumentPermission(
-                            node.target.receiver, methodType.receiverType.mutability
-                        )
-                    }.validateMutability(receiverTree, methodType.receiverType.mutability)
-                }
-                val receiverPath = Path.fromNode(node.target.receiver)
-                silentExceptionReportContext(receiverTree) {
-                    processReceiverOrParameter(
-                        methodType.receiverType, receiverPath
-                    )
-                }
-
-                permission
-            } else {
-                null
-            }
-
-            val argumentPermissions = node.arguments.zip(methodType.parameters).map { (arg, type) ->
-                if (type == null) return@map null
-                val permission = exceptionReportContext(arg.tree!!) {
-                    outputStore.chooseAndRemoveArgumentPermission(
-                        arg, type.mutability
-                    ).validateMutability(arg.tree!!, type.mutability)
-                }
-
-                silentExceptionReportContext(arg.tree!!) { processReceiverOrParameter(type, Path.fromNode(arg)) }
-
-                permission
-            }
-
-            /*
-             * Imaginary method execution here
-             */
-
-
-            val receiverData = if (methodType.receiverType != null) listOf(
-                Triple(
-                    node.target.receiver.takeIf { it !is ThisNode },
-                    methodType.receiverType,
-                    receiverPermission!!
-                )
-            ) else emptyList()
-
-            val argumentData = node.arguments.zip(methodType.parameters).zip(argumentPermissions).map { (p, z) ->
-                val (x, y) = p
-                Triple(x, y, z)
-            }
-
-            val freeBorrows = mutableListOf<BorroQValue.FreePermission.FreeBorrow>()
-            for ((argument, type, permission) in argumentData + receiverData) {
-                when (type?.releaseMode) {
-                    null -> {}
-                    is ReleaseMode.Mixed -> {
-                        outputStore.recombineNodeOrThis(argument, permission!!)
-                    }
-
-                    is SingleReleaseMode if type.releaseMode.onPaths.orEmpty().isNotEmpty() -> {
-                        outputStore.recombineNodeOrThis(argument, permission!!)
-                    }
-
-                    is SingleReleaseMode.Release -> {
-                        outputStore.recombineNodeOrThis(argument, permission!!)
-                    }
-
-                    is SingleReleaseMode.Borrow, is SingleReleaseMode.Move -> {}
-                }
-            }
-
-            freeBorrows.run {
-                for (borrow in temporaryBorrows) {
-                    outputStore.removeBorrow(borrow)
-                    add(BorroQValue.FreePermission.FreeBorrow(borrow.path, borrow.fraction))
-                }
-            }
-            val freePermission = returnPermission?.let { BorroQValue.FreePermission(it, freeBorrows) }
-
-            return node.regularResult(freePermission, outputStore)
-        } catch (_: BorroQReportedException) {
-            return node.regularResult(
-                returnPermission?.let { BorroQValue.FreePermission(it, emptyList()) }, input.regularStore
+        return context(input.regularStore, node.target.tree!!, node) {
+            processCallLike(
+                methodType,
+                node.target.receiver,
+                node.arguments
             )
         }
     }
