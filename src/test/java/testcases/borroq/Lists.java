@@ -29,8 +29,8 @@ public interface Lists {
     }
 
     static void innerImmutOuterMut(@Mutable @Release List<@Immutable Object> list, int i) {
+        // :: error: permission.insufficient.shallow.assignment.expression
         @Mutable Object elem = list.get(i);
-        // :: error: permission.insufficient.shallow
         ensureMutable(elem);
     }
 }
