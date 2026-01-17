@@ -255,9 +255,7 @@ class BorroQTransfer(
 
     context(store: BorroQStore, tree: Tree, node: Node)
     private fun processCallLike(
-        signature: SignatureType,
-        receiver: Node?,
-        arguments: List<Node>
+        signature: SignatureType, receiver: Node?, arguments: List<Node>
     ): RegularTransferResult<BorroQValue, BorroQStore> {
         val temporaryBorrows = mutableListOf<Borrow>()
         val receiverTree = receiver?.tree ?: tree
@@ -311,9 +309,7 @@ class BorroQTransfer(
 
             val receiverData = if (signature.receiverType != null) listOf(
                 Triple(
-                    receiver.takeIf { it !is ThisNode },
-                    signature.receiverType,
-                    receiverPermission!!
+                    receiver.takeIf { it !is ThisNode }, signature.receiverType, receiverPermission!!
                 )
             ) else emptyList()
 
@@ -380,9 +376,7 @@ class BorroQTransfer(
 
         return context(input.regularStore, node.target.tree!!, node) {
             processCallLike(
-                methodType,
-                node.target.receiver,
-                node.arguments
+                methodType, node.target.receiver, node.arguments
             )
         }
     }
@@ -420,7 +414,8 @@ class BorroQTransfer(
                 }
 
                 val targetPermission = IdentifiedPermission(
-                    rhsValue.permission.fraction * (targetMutabilityAnnotation?.fraction ?: Rational.ONE), targetId
+                    if (unfulfilledMutability) Rational.ONE else if (unfulfilledReadability) ImmutableFraction else rhsValue.permission.fraction * (targetMutabilityAnnotation?.fraction // Avoid mutability issues "downstream"
+                        ?: Rational.ONE), targetId
                 )
                 val borrows = rhsValue.attachedBorrows.map { it.toBorrow(targetId) }
                 result(targetPermission) {
@@ -514,8 +509,7 @@ class BorroQTransfer(
 
     fun visitFieldAssignment(node: AssignmentNode, target: FieldAccessNode, input: Input): Result {
         context(
-            input.regularStore,
-            memberTypeAnalysis
+            input.regularStore, memberTypeAnalysis
         ) { silentExceptionReportContext(target.tree!!) { checkAssignability(target.receiver, target.element) } }
 
         val fieldMutability = memberTypeAnalysis.getFieldMutability(target.element) ?: return node.regularResult(
@@ -755,8 +749,7 @@ class BorroQTransfer(
     }
 
     override fun visitTypeCast(
-        n: TypeCastNode,
-        p: Input
+        n: TypeCastNode, p: Input
     ): Result {
         if (n.type.kind.isPrimitive) {
             return doNothing(n, p)
@@ -772,15 +765,13 @@ class BorroQTransfer(
     }
 
     override fun visitMarker(
-        n: MarkerNode,
-        p: Input
+        n: MarkerNode, p: Input
     ): Result {
         return doNothing(n, p)
     }
 
     override fun visitTernaryExpression(
-        n: TernaryExpressionNode,
-        p: Input
+        n: TernaryExpressionNode, p: Input
     ): Result {
         return doNothing(n, p)
     }
@@ -798,29 +789,25 @@ class BorroQTransfer(
     }
 
     override fun visitNumericalSubtraction(
-        n: NumericalSubtractionNode,
-        p: Input
+        n: NumericalSubtractionNode, p: Input
     ): Result {
         return doNothing(n, p)
     }
 
     override fun visitLessThan(
-        n: LessThanNode,
-        p: Input
+        n: LessThanNode, p: Input
     ): Result {
         return doNothing(n, p)
     }
 
     override fun visitIntegerRemainder(
-        n: IntegerRemainderNode,
-        p: Input
+        n: IntegerRemainderNode, p: Input
     ): Result {
         return doNothing(n, p)
     }
 
     override fun visitEqualTo(
-        n: EqualToNode,
-        p: Input
+        n: EqualToNode, p: Input
     ): Result {
         return doNothing(n, p)
     }
