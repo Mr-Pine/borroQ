@@ -1,6 +1,9 @@
+@file:Suppress("JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE")
+
 package de.mr_pine.borroq.analysis
 
 import com.sun.source.tree.Tree
+import com.sun.tools.javac.code.Type
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
@@ -742,6 +745,52 @@ class BorroQTransfer(
             null, p.regularStore
         )
     }
+
+    // region array stuff
+    override fun visitArrayCreation(node: ArrayCreationNode, input: Input): Result {
+        val arguments = List(node.initializers.size) {
+            val elementType = (node.type as Type.ArrayType).elemtype
+            if (elementType.isPrimitive) return@List null
+
+            val elementMutability =
+                Mutability.fromAnnotationsOnType(elementType.annotationMirrors, TypesUtils.getTypeElement(elementType))
+                    ?: DefaultInference.inferArrayElementMutability()
+            require(elementMutability is Mutability.Immutable) { "Can only support immutable array elements @ $node" }
+
+            SignatureType.ParameterType(elementMutability, SingleReleaseMode.Borrow(null))
+        }
+        val syntheticSignature = SignatureType(Mutability.Mutable(null), null, arguments)
+
+        return context(input.regularStore, node.tree!!, node) {
+            processCallLike(
+                syntheticSignature,
+                null,
+                node.initializers
+            )
+        }
+    }
+
+    override fun visitArrayAccess(
+        node: ArrayAccessNode,
+        p: Input
+    ): Result {
+        val syntheticSignatureType = SignatureType(
+            Mutability.Immutable(null) /* CF seems to forget annotations on element type */,
+            SignatureType.ParameterType(
+                Mutability.Immutable(null), SingleReleaseMode.Borrow(null)
+            ),
+            listOf(null)
+        )
+        return context(p.regularStore, node.tree!!, node) {
+            processCallLike(
+                syntheticSignatureType,
+                node.array,
+                listOf(node.index)
+            )
+        }
+    }
+
+    // endregion array stuff
 
     companion object {
         val ThisId = Id("this")

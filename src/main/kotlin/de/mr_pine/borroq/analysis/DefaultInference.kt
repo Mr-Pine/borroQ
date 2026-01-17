@@ -23,5 +23,7 @@ object DefaultInference {
 
     fun inferReturnMutability(): Mutability = Mutability.Immutable(null)
 
+    fun inferArrayElementMutability(): Mutability = Mutability.Immutable(null)
+
     // TODO: Infer parameter mutability
 }
