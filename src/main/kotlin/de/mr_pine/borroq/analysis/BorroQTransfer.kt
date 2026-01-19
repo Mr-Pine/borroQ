@@ -24,8 +24,10 @@ import org.checkerframework.dataflow.expression.LocalVariable
 import org.checkerframework.javacutil.ElementUtils
 import org.checkerframework.javacutil.TreeUtils
 import org.checkerframework.javacutil.TypesUtils
+import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.TypeElement
 import javax.lang.model.element.VariableElement
+import javax.lang.model.type.TypeKind
 import kotlin.contracts.ExperimentalContracts
 
 private typealias Result = TransferResult<BorroQValue, BorroQStore>
@@ -183,7 +185,7 @@ class BorroQTransfer(
         } else emptyList()
 
         return BorroQStore(
-            parameterPermissions, receiverPermission, (parameterBorrows + receiverBorrows).toMutableList()
+            parameterPermissions, receiverPermission, (parameterBorrows + receiverBorrows).toMutableList(), emptyMap()
         )
     }
 
@@ -258,7 +260,10 @@ class BorroQTransfer(
 
     context(store: BorroQStore, tree: Tree, node: Node)
     private fun processCallLike(
-        signature: SignatureType, receiver: Node?, arguments: List<Node>
+        signature: SignatureType,
+        receiver: Node?,
+        arguments: List<Node>,
+        returnParamMutabilities: Map<List<Int>, Mutability>?
     ): RegularTransferResult<BorroQValue, BorroQStore> {
         val temporaryBorrows = mutableListOf<Borrow>()
         val receiverTree = receiver?.tree ?: tree
@@ -348,12 +353,13 @@ class BorroQTransfer(
                 }
             }
 
-            val freePermission = returnPermission?.let { BorroQValue.FreePermission(it, freeBorrows) }
+            val freePermission =
+                returnPermission?.let { BorroQValue.FreePermission(it, freeBorrows, returnParamMutabilities) }
 
             return node.regularResult(freePermission, store)
         } catch (_: BorroQReportedException) {
             return node.regularResult(
-                returnPermission?.let { BorroQValue.FreePermission(it, emptyList()) }, store
+                returnPermission?.let { BorroQValue.FreePermission(it, emptyList(), returnParamMutabilities) }, store
             )
         }
     }
@@ -377,9 +383,16 @@ class BorroQTransfer(
             throw IncompatibleSuperConstructorMutability()
         }
 
+        val returnParamMutabilities =
+            if (node.target.method.returnType.kind.let { it.isPrimitive || it == TypeKind.VOID }) {
+                null
+            } else {
+                TODO()
+            }
+
         return context(input.regularStore, node.target.tree!!, node) {
             processCallLike(
-                methodType, node.target.receiver, node.arguments
+                methodType, node.target.receiver, node.arguments, returnParamMutabilities
             )
         }
     }
@@ -617,10 +630,28 @@ class BorroQTransfer(
     }
 
     override fun visitObjectCreation(
-        n: ObjectCreationNode, p: Input
+        node: ObjectCreationNode, p: Input
     ): Result {
+        val constructorElement: ExecutableElement = TreeUtils.elementFromUse(node.tree!!)
+
+        val signature = memberTypeAnalysis.getType(constructorElement) {
+            silentExceptionReportContext(node.tree!!) { it() }
+        }
+
+        val typeParamMutabilities = if ((node.typeToInstantiate.type as Type.ClassType).parameterTypes.isNotEmpty()) {
+            TODO("Constructing classes with type parameters")
+        } else {
+            null
+        }
+
+        val resultingPermission = BorroQValue.FreePermission(
+            Permission(signature.returnMutability!!.fraction), emptyList(), typeParamMutabilities
+        )
+
+        TODO("Handle constructor")
+
         return RegularTransferResult(
-            BorroQValue.FreePermission(Permission(Rational.ONE), emptyList()), p.regularStore
+            resultingPermission, p.regularStore
         )
     }
 
@@ -736,7 +767,7 @@ class BorroQTransfer(
         node: StringLiteralNode, input: Input
     ): Result {
         return node.regularResult(
-            BorroQValue.FreePermission(Permission(ImmutableFraction), emptyList()), input.regularStore
+            BorroQValue.FreePermission(Permission(ImmutableFraction), emptyList(), null), input.regularStore
         )
     }
 
@@ -763,16 +794,13 @@ class BorroQTransfer(
 
         return context(input.regularStore, node.tree!!, node) {
             processCallLike(
-                syntheticSignature,
-                null,
-                node.initializers
+                syntheticSignature, null, node.initializers, TODO()
             )
         }
     }
 
     override fun visitArrayAccess(
-        node: ArrayAccessNode,
-        p: Input
+        node: ArrayAccessNode, p: Input
     ): Result {
         val syntheticSignatureType = SignatureType(
             Mutability.Immutable(null) /* CF seems to forget annotations on element type */,
@@ -783,9 +811,7 @@ class BorroQTransfer(
         )
         return context(p.regularStore, node.tree!!, node) {
             processCallLike(
-                syntheticSignatureType,
-                node.array,
-                listOf(node.index)
+                syntheticSignatureType, node.array, listOf(node.index), TODO()
             )
         }
     }

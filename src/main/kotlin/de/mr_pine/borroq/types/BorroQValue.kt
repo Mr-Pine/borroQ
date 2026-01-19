@@ -1,5 +1,6 @@
 package de.mr_pine.borroq.types
 
+import de.mr_pine.borroq.types.specifiers.Mutability
 import org.checkerframework.dataflow.analysis.AbstractValue
 
 sealed interface BorroQValue : AbstractValue<BorroQValue> {
@@ -12,7 +13,7 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
     val hasShallowReadability: Boolean
         get() = false
 
-    data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
+    data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>, val typeParamMutabilities: Map<List<Int>, Mutability>?) : BorroQValue {
         override val hasShallowMutability: Boolean
             get() = permission.fraction == Rational.ONE
         override val hasShallowReadability: Boolean

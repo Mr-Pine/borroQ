@@ -1,5 +1,6 @@
 package testcases.borroq.eval;
 
+import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
 
 public interface ArrayDisjointBorrows {
@@ -27,9 +28,12 @@ public interface ArrayDisjointBorrows {
     }
 
     default void one() {
-        Test[] inputs = new Test[]{new Test(0,0)};
-        Box a = inputs[0].a;
-        Box b = inputs[0].b;
+        Test elem = new Test(0, 0);
+        // :: error: abc
+        @Mutable Test[] inputs = new @Immutable Test[]{elem};
+        Test elem2 = inputs[0];
+        @Mutable Box a = inputs[0].a;
+        @Mutable Box b = inputs[0].b;
 
         a.value = 0;
         a.value = 1;

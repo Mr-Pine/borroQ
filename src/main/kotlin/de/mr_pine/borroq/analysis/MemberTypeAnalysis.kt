@@ -37,8 +37,8 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         stubManager.parseStubFiles()
     }
 
-    fun getType(method: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
-        return signatureCache.getOrPut(method, defaultValue = { calculateType(method, exceptionReportingContext) })
+    fun getType(callable: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
+        return signatureCache.getOrPut(callable, defaultValue = { calculateType(callable, exceptionReportingContext) })
     }
 
     fun getType(methodAccess: MethodAccessNode, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
@@ -149,10 +149,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
             val mutability = Mutability.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No mutability specified for parameter of $methodName of type $argType")
+                ?: DefaultInference.inferParameterMutability(isConstructor)
             val releaseMode = ReleaseMode.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No release mode specified")
+                ?: DefaultInference.inferParameterReleaseMode(isConstructor)
 
             SignatureType.ParameterType(mutability, releaseMode)
         }

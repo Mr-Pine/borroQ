@@ -19,10 +19,16 @@ import org.checkerframework.dataflow.expression.*
 data class BorroQStore(
     private val variablePermissions: MutableMap<LocalVariable, VariablePermission>,
     private var thisPermission: VariablePermission?,
-    private val borrowList: MutableList<Borrow>
+    private val borrowList: MutableList<Borrow>,
+    private val typeParamMutabilities: Map<Id, Map<List<Int>, Mutability>>,
 ) : Store<BorroQStore> {
 
-    override fun copy() = BorroQStore(variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
+    override fun copy() = BorroQStore(
+        variablePermissions.toMutableMap(),
+        thisPermission,
+        borrowList.toMutableList(),
+        typeParamMutabilities
+    )
 
     fun updatePermission(target: Node, permission: VariablePermission) {
         when (val expression = JavaExpression.fromNode(target)) {
@@ -40,7 +46,9 @@ data class BorroQStore(
         val availablePermission = when (val expression = JavaExpression.fromNode(argument)) {
             is LocalVariable -> variablePermissions[expression]!!
             is ValueLiteral -> return null
-            is FieldAccess if Path.fromNode(argument).root == PathRoot.StaticPathRoot -> return Permission(Rational.HALF).withId(Id("<<static>>")) // TODO: This is not great
+            is FieldAccess if Path.fromNode(argument).root == PathRoot.StaticPathRoot -> return Permission(Rational.HALF).withId(
+                Id("<<static>>")
+            ) // TODO: This is not great
             else -> TODO("non local-var argument: $expression ${expression.javaClass}")
         }
 
@@ -188,7 +196,19 @@ data class BorroQStore(
         val borrows =
             (borrowList + other.borrowList).groupBy { it.path to it.id }.values.map { it.maxBy { it.fraction } }
 
-        return BorroQStore(combinedLocalPermissions.toMutableMap(), combinedThisPermission, borrows.toMutableList())
+        val typeParamMutabilities = run {
+            val commonKeys = typeParamMutabilities.keys.intersect(other.typeParamMutabilities.keys)
+            val conflictingKeys = commonKeys.filter { typeParamMutabilities[it] != other.typeParamMutabilities[it] }
+            require(conflictingKeys.isEmpty()) { "Conflicting type parameter mutabilities for $conflictingKeys" }
+            typeParamMutabilities + other.typeParamMutabilities
+        }
+
+        return BorroQStore(
+            combinedLocalPermissions.toMutableMap(),
+            combinedThisPermission,
+            borrows.toMutableList(),
+            typeParamMutabilities
+        )
     }
 
     override fun widenedUpperBound(previous: BorroQStore?): BorroQStore {
