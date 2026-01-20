@@ -150,6 +150,9 @@ data class BorroQStore(
 
     fun queryThisPermission(): VariablePermission? = thisPermission
 
+    fun getTypeParamMutabilities(id: Id): Map<List<Int>, Mutability> =
+        typeParamMutabilities[id]!!
+
     fun hasShallowMutability(id: Id): Boolean {
         return variablePermissions.values.filter { (it as? IdentifiedPermission)?.fraction?.isZero() != true }
             .all { it is IdentifiedPermission && it.id == id && it.hasShallowMutability }

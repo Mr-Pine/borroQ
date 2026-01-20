@@ -3,6 +3,7 @@
 package de.mr_pine.borroq.analysis
 
 import com.sun.source.tree.Tree
+import com.sun.tools.javac.code.Symbol
 import com.sun.tools.javac.code.Type
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
@@ -26,6 +27,7 @@ import org.checkerframework.javacutil.TreeUtils
 import org.checkerframework.javacutil.TypesUtils
 import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.TypeElement
+import javax.lang.model.element.TypeParameterElement
 import javax.lang.model.element.VariableElement
 import javax.lang.model.type.TypeKind
 import kotlin.contracts.ExperimentalContracts
@@ -184,8 +186,44 @@ class BorroQTransfer(
             ) { calculateBorrows(IdPath(ThisId), baseType, emptyList()) }
         } else emptyList()
 
+        val typeParamMutabilities: Map<Id, Map<List<Int>, Mutability>> = parameters.associate { param ->
+            Id.fromNode(param) to buildMap {
+                val paramType = param.type
+                if (TypesUtils.isParameterizedType(paramType)) {
+
+                    fun addRecursiveParamMutabilities(type: Type.ClassType, existingPath: List<Int>) {
+
+                        val typeParams = type.allparams()
+                        for ((i, typeParam) in typeParams.withIndex()) {
+                            val paramMutability = Mutability.fromAnnotationsOnType(
+                                typeParam.annotationMirrors,
+                                TypesUtils.getTypeElement(type)
+                            ) ?: TODO("Default type parameter mutability")
+                            val newPath = existingPath + listOf(i)
+                            put(newPath, paramMutability)
+
+                            if (typeParam.isParameterized) addRecursiveParamMutabilities(
+                                typeParam as Type.ClassType,
+                                newPath
+                            )
+                            else if (typeParam.kind == TypeKind.ARRAY) TODO("Array as nested type parameter")
+                        }
+                    }
+
+                    addRecursiveParamMutabilities(paramType as Type.ClassType, emptyList())
+                } else if (paramType.kind == TypeKind.TYPEVAR) {
+                    TODO()
+                } else if (paramType.kind == TypeKind.ARRAY) {
+                    TODO()
+                }
+            }
+        }
+
         return BorroQStore(
-            parameterPermissions, receiverPermission, (parameterBorrows + receiverBorrows).toMutableList(), emptyMap()
+            parameterPermissions,
+            receiverPermission,
+            (parameterBorrows + receiverBorrows).toMutableList(),
+            typeParamMutabilities
         )
     }
 
@@ -370,29 +408,59 @@ class BorroQTransfer(
     ): Result {
         require(!input.containsTwoStores()) { "Method invocation node $node has two stores" }
 
-        val methodType = memberTypeAnalysis.getType(node.target, exceptionReportingContext = { block ->
+        var signatureType = memberTypeAnalysis.getType(node.target, exceptionReportingContext = { block ->
             try {
                 exceptionReportContext(node.tree!!, block)
             } catch (_: BorroQReportedException) {
             }
         })
 
-        if (node.target.method.isConstructor && methodType.returnMutability is Mutability.Immutable && signatureType.returnMutability is Mutability.Mutable) silentExceptionReportContext(
+        val returnType = node.target.method.returnType
+        val returnParamMutabilities = if (TypesUtils.isParameterizedType(returnType)) {
+            TODO()
+        } else if (returnType.kind == TypeKind.TYPEVAR) {
+            val typeVarSymbol = (checker.typeUtils.asElement(returnType) as TypeParameterElement)
+            val ownerParameters = (typeVarSymbol.genericElement as Symbol).typeParameters
+            val typeVarIndex = ownerParameters.indexOf(typeVarSymbol)
+
+            val receiverTypeParamMutabilities: Map<List<Int>, Mutability> =
+                when (val receiverPerm = input.getValueOfSubNode(node.target.receiver)) {
+                    is BorroQValue.FreePermission -> receiverPerm.typeParamMutabilities!!
+                    is IdentifiedPermission -> input.regularStore.getTypeParamMutabilities(receiverPerm.id)
+                    else -> TODO("Extract receiver type parameters from $receiverPerm")
+                }
+
+            val returnTypeMutability = if (signatureType.returnMutability is Mutability.Immutable) {
+                Mutability.Immutable(null)
+            } else {
+                receiverTypeParamMutabilities[listOf(typeVarIndex)]
+            }
+
+            signatureType = signatureType.copy(returnMutability = returnTypeMutability)
+
+            receiverTypeParamMutabilities.entries.mapNotNull { (paramIndices, mutability) ->
+                if (paramIndices[0] == typeVarIndex) {
+                    val newPath = paramIndices.drop(1).takeIf { it.isNotEmpty() }
+                    newPath?.let {
+                        it to mutability
+                    }
+                } else null
+            }.toMap()
+        } else if (returnType.kind == TypeKind.ARRAY) {
+            TODO()
+        } else {
+            null
+        }
+
+        if (node.target.method.isConstructor && signatureType.returnMutability is Mutability.Immutable && this@BorroQTransfer.signatureType.returnMutability is Mutability.Mutable) silentExceptionReportContext(
             node.tree!!
         ) {
             throw IncompatibleSuperConstructorMutability()
         }
 
-        val returnParamMutabilities =
-            if (node.target.method.returnType.kind.let { it.isPrimitive || it == TypeKind.VOID }) {
-                null
-            } else {
-                TODO()
-            }
-
         return context(input.regularStore, node.target.tree!!, node) {
             processCallLike(
-                methodType, node.target.receiver, node.arguments, returnParamMutabilities
+                signatureType, node.target.receiver, node.arguments, returnParamMutabilities
             )
         }
     }
@@ -630,7 +698,7 @@ class BorroQTransfer(
     }
 
     override fun visitObjectCreation(
-        node: ObjectCreationNode, p: Input
+        node: ObjectCreationNode, input: Input
     ): Result {
         val constructorElement: ExecutableElement = TreeUtils.elementFromUse(node.tree!!)
 
@@ -648,11 +716,11 @@ class BorroQTransfer(
             Permission(signature.returnMutability!!.fraction), emptyList(), typeParamMutabilities
         )
 
-        TODO("Handle constructor")
-
-        return RegularTransferResult(
-            resultingPermission, p.regularStore
-        )
+        return context(input.regularStore, node.tree!!, node) {
+            processCallLike(
+                signature, null, node.arguments, typeParamMutabilities
+            )
+        }
     }
 
     //region return/exit

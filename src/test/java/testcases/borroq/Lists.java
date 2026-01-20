@@ -13,7 +13,7 @@ public interface Lists {
     static void ensureReadable(@Immutable @Release Object x) {
     }
 
-    static void getElement(@Immutable @Release List<@Immutable Object> list, int i) {
+    static void getElement(@Mutable @Release List<@Immutable Object> list, int i) {
         @Immutable Object elem = list.get(i);
         // :: error: permission.insufficient.shallow
         // :: error: permission.insufficient.deep
@@ -28,9 +28,9 @@ public interface Lists {
         ensureMutable(elem);
     }
 
-    static void innerImmutOuterMut(@Mutable @Release List<@Immutable Object> list, int i) {
+    static void innerImmutOuterMut(@Mutable @Release List<@Immutable Object> listX, int i) {
         // :: error: permission.insufficient.shallow.assignment.expression
-        @Mutable Object elem = list.get(i);
+        @Mutable Object elem = listX.get(i);
         ensureMutable(elem);
     }
 }

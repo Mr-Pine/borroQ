@@ -35,7 +35,7 @@ public class PrintStream {
 package java.util;
 
 public interface List<E> {
-    E get(@Immutable @Borrow List<E> this, int index);
+    E get(@Mutable @Borrow List<E> this, int index);
 }
 
 public class Scanner {
