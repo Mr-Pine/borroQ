@@ -24,6 +24,7 @@ import org.checkerframework.dataflow.expression.LocalVariable
 import org.checkerframework.javacutil.ElementUtils
 import org.checkerframework.javacutil.TreeUtils
 import org.checkerframework.javacutil.TypesUtils
+import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.TypeElement
 import javax.lang.model.element.VariableElement
 import kotlin.contracts.ExperimentalContracts
@@ -617,11 +618,14 @@ class BorroQTransfer(
     }
 
     override fun visitObjectCreation(
-        n: ObjectCreationNode, p: Input
+        node: ObjectCreationNode, input: Input
     ): Result {
-        return RegularTransferResult(
-            BorroQValue.FreePermission(Permission(Rational.ONE), emptyList()), p.regularStore
-        )
+        val constructorElement: ExecutableElement = TreeUtils.elementFromUse(node.tree!!)
+        val signature = memberTypeAnalysis.getType(constructorElement) {
+            silentExceptionReportContext(node.tree!!) { it() }
+        }
+
+        return context(input.regularStore, node.tree!!, node) { processCallLike(signature, node, node.arguments) }
     }
 
     //region return/exit
