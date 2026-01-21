@@ -4,6 +4,7 @@ package de.mr_pine.borroq.analysis
 
 import com.sun.source.tree.Tree
 import com.sun.tools.javac.code.Type
+import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
 import de.mr_pine.borroq.Strictness
@@ -27,6 +28,7 @@ import org.checkerframework.javacutil.TypesUtils
 import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.TypeElement
 import javax.lang.model.element.VariableElement
+import javax.lang.model.type.ArrayType
 import kotlin.contracts.ExperimentalContracts
 
 private typealias Result = TransferResult<BorroQValue, BorroQStore>
@@ -759,7 +761,6 @@ class BorroQTransfer(
             val elementMutability =
                 Mutability.fromAnnotationsOnType(elementType.annotationMirrors, TypesUtils.getTypeElement(elementType))
                     ?: DefaultInference.inferArrayElementMutability()
-            require(elementMutability is Mutability.Immutable) { "Can only support immutable array elements @ $node" }
 
             SignatureType.ParameterType(elementMutability, SingleReleaseMode.Borrow(null))
         }
@@ -778,8 +779,17 @@ class BorroQTransfer(
         node: ArrayAccessNode,
         p: Input
     ): Result {
+        val componentMutability = node.array.let {
+            (it.tree as? JCTree.JCIdent)?.sym?.asType() ?: it.type
+        }.let { it as ArrayType }.componentType.let {
+            Mutability.fromAnnotationsOnType(
+                it.annotationMirrors,
+                TypesUtils.getTypeElement(it)
+            )
+        } ?: DefaultInference.inferTypeParameterMutability()
+
         val syntheticSignatureType = SignatureType(
-            Mutability.Immutable(null) /* CF seems to forget annotations on element type */,
+            componentMutability,
             SignatureType.ParameterType(
                 Mutability.Immutable(null), SingleReleaseMode.Borrow(null)
             ),

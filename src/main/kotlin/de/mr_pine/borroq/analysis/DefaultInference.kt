@@ -5,8 +5,8 @@ import de.mr_pine.borroq.types.Rational
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.Mutability.Immutable
 import de.mr_pine.borroq.types.specifiers.Mutability.Mutable
-import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Release
 import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Borrow
+import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Release
 
 object DefaultInference {
     fun inferVariableMutability(assignedValue: BorroQValue): Mutability {
@@ -30,4 +30,6 @@ object DefaultInference {
 
     fun inferParameterMutability(isConstructor: Boolean) = Immutable(null)
     fun inferParameterReleaseMode(isConstructor: Boolean) = if (isConstructor) Borrow(null) else Release(null)
+
+    fun inferTypeParameterMutability() = Immutable(null)
 }

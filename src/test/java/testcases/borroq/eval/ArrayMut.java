@@ -16,7 +16,10 @@ public interface ArrayMut {
     }
 
     default void main() {
-        @Mutable Box @Mutable [] values = new Box[]{new Box(0), new Box(1), new Box(2)};
+        Box box0 = new Box(0);
+        Box box1 = new Box(1);
+        Box box2 = new Box(2);
+        @Mutable Box [] values = new @Mutable Box[]{box0, box1, box2};
         @Mutable Box x = values[0];
         @Mutable Box y = values[1];
 
