@@ -149,10 +149,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
             val mutability = Mutability.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No mutability specified for parameter of $methodName of type $argType")
+                ?: DefaultInference.inferParameterMutability(isConstructor)
             val releaseMode = ReleaseMode.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
                 ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: throw IllegalStateException("No release mode specified")
+                ?: DefaultInference.inferParameterReleaseMode(isConstructor)
 
             SignatureType.ParameterType(mutability, releaseMode)
         }
