@@ -31,7 +31,12 @@ public class CounterexampleDeletingBorrows {
 
         B extracted = a.b;
         Box extractedBox = extracted.x;
+
+        Box differentExtractedBox = a.b.x;
+
         extractedBox.value = 1;
-        System.out.println(a.b.x.value);
+
+        int val = differentExtractedBox.value;
+        System.out.println(val);
     }
 }

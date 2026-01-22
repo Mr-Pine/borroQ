@@ -68,12 +68,21 @@ class BorroQTransfer(
     ): RegularTransferResult<BorroQValue, BorroQStore> {
         val died =
             liveness.getStoreBefore(this)?.liveVariables.orEmpty() - liveness.getStoreAfter(this)?.liveVariables.orEmpty()
-        for (variable in died) {
-            store.killVariable(variable.liveVariable)
+
+        fun toVariable(node: Node): LocalVariableNode? = when (node) {
+            is FieldAccessNode -> toVariable(node.receiver)
+            is LocalVariableNode -> node
+            else -> null
+        }
+
+        val diedVariables = died.mapNotNull { toVariable(it.liveVariable) }
+
+        for (variable in diedVariables) {
+            store.killVariable(variable)
         }
 
         fun Set<LiveVarNode>?.liveIds() =
-            orEmpty().asSequence().map { it.liveVariable }.filterIsInstance<LocalVariableNode>()
+            orEmpty().asSequence().mapNotNull { toVariable(it.liveVariable) }
                 .mapNotNull { store.queryPermission(it) as IdentifiedPermission? }.map { it.id }.toSet()
 
         val diedIds =
