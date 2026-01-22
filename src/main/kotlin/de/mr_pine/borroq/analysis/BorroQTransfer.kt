@@ -66,24 +66,25 @@ class BorroQTransfer(
     fun Node.regularResult(
         value: BorroQValue?, store: BorroQStore, storeChanged: Boolean = true
     ): RegularTransferResult<BorroQValue, BorroQStore> {
-        val died =
-            liveness.getStoreBefore(this)?.liveVariables.orEmpty() - liveness.getStoreAfter(this)?.liveVariables.orEmpty()
-
         fun toVariable(node: Node): LocalVariableNode? = when (node) {
             is FieldAccessNode -> toVariable(node.receiver)
             is LocalVariableNode -> node
             else -> null
         }
 
-        val diedVariables = died.mapNotNull { toVariable(it.liveVariable) }
+        fun Set<LiveVarNode>?.liveVariables() =
+            orEmpty().asSequence().mapNotNull { toVariable(it.liveVariable) }.toSet()
+
+        val diedVariables =
+            liveness.getStoreBefore(this)?.liveVariables.liveVariables() - liveness.getStoreAfter(this)?.liveVariables.liveVariables()
+
 
         for (variable in diedVariables) {
             store.killVariable(variable)
         }
 
         fun Set<LiveVarNode>?.liveIds() =
-            orEmpty().asSequence().mapNotNull { toVariable(it.liveVariable) }
-                .mapNotNull { store.queryPermission(it) as IdentifiedPermission? }.map { it.id }.toSet()
+            liveVariables().mapNotNull { store.queryPermission(it) as IdentifiedPermission? }.map { it.id }.toSet()
 
         val diedIds =
             liveness.getStoreBefore(this)?.liveVariables.liveIds() - liveness.getStoreAfter(this)?.liveVariables.liveIds()
@@ -611,9 +612,7 @@ class BorroQTransfer(
 
         when (targetType) {
             is ArrayType -> validateTypeParameters(
-                targetType.componentType,
-                (valueType as ArrayType).componentType,
-                false
+                targetType.componentType, (valueType as ArrayType).componentType, false
             )
 
             is ReferenceType -> if (TypesUtils.isParameterizedType(targetType)) {
@@ -835,36 +834,28 @@ class BorroQTransfer(
 
         return context(input.regularStore, node.tree!!, node) {
             processCallLike(
-                syntheticSignature,
-                null,
-                node.initializers
+                syntheticSignature, null, node.initializers
             )
         }
     }
 
     override fun visitArrayAccess(
-        node: ArrayAccessNode,
-        p: Input
+        node: ArrayAccessNode, p: Input
     ): Result {
         val componentMutability = node.array.annotatedType.let { it as ArrayType }.componentType.let {
             Mutability.fromAnnotationsOnType(
-                it.annotationMirrors,
-                TypesUtils.getTypeElement(it)
+                it.annotationMirrors, TypesUtils.getTypeElement(it)
             )
         } ?: DefaultInference.inferTypeParameterMutability()
 
         val syntheticSignatureType = SignatureType(
-            componentMutability,
-            SignatureType.ParameterType(
+            componentMutability, SignatureType.ParameterType(
                 Mutability.Immutable(null), SingleReleaseMode.Borrow(null)
-            ),
-            listOf(null)
+            ), listOf(null)
         )
         return context(p.regularStore, node.tree!!, node) {
             processCallLike(
-                syntheticSignatureType,
-                node.array,
-                listOf(node.index)
+                syntheticSignatureType, node.array, listOf(node.index)
             )
         }
     }
