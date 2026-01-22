@@ -40,8 +40,11 @@ data class BorroQStore(
         val availablePermission = when (val expression = JavaExpression.fromNode(argument)) {
             is LocalVariable -> variablePermissions[expression]
                 ?: null!!
+
             is ValueLiteral -> return null
-            is FieldAccess if Path.fromNode(argument).root == PathRoot.StaticPathRoot -> return Permission(Rational.HALF).withId(Id("<<static>>")) // TODO: This is not great
+            is FieldAccess if Path.fromNode(argument).root == PathRoot.StaticPathRoot -> return Permission(Rational.HALF).withId(
+                Id("<<static>>")
+            ) // TODO: This is not great
             else -> TODO("non local-var argument: $expression ${expression.javaClass}")
         }
 
@@ -168,6 +171,12 @@ data class BorroQStore(
         val toRemove = borrowList.filter { it.id == id }
         borrowList.removeAll(toRemove)
         return toRemove
+    }
+
+    fun removeDanglingBorrowsWithId(id: Id): List<Borrow> {
+        val toRemove = borrowList.filter { borrow -> borrow.id == id && borrowList.none { it.path.id == borrow.id } }
+        borrowList.removeAll(toRemove)
+        return toRemove + if (toRemove.isNotEmpty()) removeDanglingBorrowsWithId(id) else emptyList()
     }
 
     fun removeBorrowsWithPathPrefix(path: IdPath): List<Borrow> {
