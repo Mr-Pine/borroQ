@@ -27,7 +27,8 @@ public interface ArrayDisjointBorrows {
     }
 
     default void one() {
-        Test[] inputs = new Test[]{new Test(0,0)};
+        Test test = new Test(0, 0);
+        Test[] inputs = new Test[]{test};
         Box a = inputs[0].a;
         Box b = inputs[0].b;
 

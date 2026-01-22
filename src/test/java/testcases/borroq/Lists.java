@@ -15,9 +15,10 @@ public interface Lists {
 
     static void getElement(@Mutable @Release List<@Immutable Object> list, int i) {
         @Immutable Object elem = list.get(i);
+        int j = i + 1;
         // :: error: permission.insufficient.shallow
         // :: error: permission.insufficient.deep
-        @Immutable Object elem2 = list.get(i + 1);
+        @Immutable Object elem2 = list.get(j);
 
         ensureReadable(elem);
         ensureReadable(elem2);
