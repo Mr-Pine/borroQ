@@ -30,7 +30,9 @@ public interface MutClassFields2 {
     }
 
     default void main() {
-        Cat nyan = new Cat(new Box(52), new Box(99));
+        Box box1 = new Box(52);
+        Box box2 = new Box(99);
+        Cat nyan = new Cat(box1, box2);
         nyan.eat();
     }
 }
