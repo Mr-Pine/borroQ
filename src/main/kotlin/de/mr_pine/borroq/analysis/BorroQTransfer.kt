@@ -315,7 +315,7 @@ class BorroQTransfer(
             }
 
             val argumentPermissions = arguments.zip(signature.parameters).map { (arg, type) ->
-                if (when (JavaExpression.fromNode(arg)) {
+                if (when (JavaExpression.fromNode((arg as? TypeCastNode)?.operand ?: arg)) {
                         is LocalVariable, is ValueLiteral -> false
                         is FieldAccess if Path.fromNode(arg).root == PathRoot.StaticPathRoot -> false
                         else -> true
