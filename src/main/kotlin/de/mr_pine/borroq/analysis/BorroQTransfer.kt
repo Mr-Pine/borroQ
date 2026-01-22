@@ -29,6 +29,9 @@ import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.TypeElement
 import javax.lang.model.element.VariableElement
 import javax.lang.model.type.ArrayType
+import javax.lang.model.type.ReferenceType
+import javax.lang.model.type.TypeKind
+import javax.lang.model.type.TypeMirror
 import kotlin.contracts.ExperimentalContracts
 
 private typealias Result = TransferResult<BorroQValue, BorroQStore>
@@ -50,6 +53,13 @@ class BorroQTransfer(
             is Mutability.Mutable -> Rational.ONE
             is Mutability.Immutable -> ImmutableFraction
         }
+
+    private val Node.annotatedType: TypeMirror
+        get() = when (val tree = tree) {
+            is JCTree.JCIdent -> tree.sym
+            is JCTree.JCVariableDecl -> tree.sym
+            else -> null
+        }?.asType() ?: type
 
     fun Node.regularResult(
         value: BorroQValue?, store: BorroQStore, storeChanged: Boolean = true
@@ -564,10 +574,44 @@ class BorroQTransfer(
         return node.regularResult(null, input.regularStore)
     }
 
+    fun validateTypeParameters(targetType: TypeMirror, valueType: TypeMirror, topLevel: Boolean) {
+        val targetMutability =
+            Mutability.fromAnnotationsOnType(targetType.annotationMirrors, TypesUtils.getTypeElement(targetType))
+                ?: DefaultInference.inferTypeParameterMutability()
+        val valueMutability =
+            Mutability.fromAnnotationsOnType(valueType.annotationMirrors, TypesUtils.getTypeElement(valueType))
+                ?: DefaultInference.inferTypeParameterMutability()
+
+        if (!topLevel && targetMutability is Mutability.Mutable && valueMutability is Mutability.Immutable) {
+            throw IncompatibleTypeParameterMutabilities(targetType)
+        }
+
+        when (targetType) {
+            is ArrayType -> validateTypeParameters(
+                targetType.componentType,
+                (valueType as ArrayType).componentType,
+                false
+            )
+
+            is ReferenceType -> if (TypesUtils.isParameterizedType(targetType)) {
+                TODO()
+            }
+
+            is Any if (targetType.kind.isPrimitive || targetType.kind == TypeKind.VOID) -> {}
+            else -> TODO("Validate type parameters for $targetType and $valueType")
+        }
+    }
+
     override fun visitAssignment(
         node: AssignmentNode, input: Input
     ): Result {
         require(!input.containsTwoStores()) { "Assignment node $node has two stores" }
+
+        silentExceptionReportContext(node.tree!!) {
+            validateTypeParameters(
+                node.target.annotatedType, node.expression.annotatedType, true
+            )
+        }
 
         return when (val target = node.target) {
             is LocalVariableNode -> visitLocalVariableAssignment(node, target, input)
@@ -779,9 +823,7 @@ class BorroQTransfer(
         node: ArrayAccessNode,
         p: Input
     ): Result {
-        val componentMutability = node.array.let {
-            (it.tree as? JCTree.JCIdent)?.sym?.asType() ?: it.type
-        }.let { it as ArrayType }.componentType.let {
+        val componentMutability = node.array.annotatedType.let { it as ArrayType }.componentType.let {
             Mutability.fromAnnotationsOnType(
                 it.annotationMirrors,
                 TypesUtils.getTypeElement(it)

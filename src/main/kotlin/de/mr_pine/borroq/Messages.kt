@@ -13,6 +13,7 @@ object Messages {
     const val RELEASE_PERMISSION_MISSING = "permission.release.missing"
     const val RELEASE_BORROW_CONFLICT = "permission.release.borrow.conflict"
     const val IMMUTABLE_FIELD_IN_MUTABLE_ANNOTATION = "annotation.mutable.immutable.field"
+    const val TYPE_PARAMETER_MUTABILITY_INCOMPATIBLE = "type.parameter.mutability.incompatible"
     const val HIDDEN_FIELD_ASSIGNED = "field.hidden.assigned"
     const val CONFLICTING_PATH_RESTRICTIONS = "annotation.restricted.conflicting"
 }
