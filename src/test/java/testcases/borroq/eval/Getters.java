@@ -46,10 +46,12 @@ public interface Getters {
     }
 
     default void main() {
-        @Mutable X x = new X(new BoxA(1), new BoxB(2));
+        BoxA box1 = new BoxA(1);
+        BoxB box2 = new BoxB(2);
+        @Mutable X x = new X(box1, box2);
 
-        BoxA a = x.a;
-        BoxB b = x.b;
+        BoxA a = x.getA();
+        BoxB b = x.getB();
 
         use(a);
         use(b);
