@@ -16,4 +16,5 @@ object Messages {
     const val TYPE_PARAMETER_MUTABILITY_INCOMPATIBLE = "type.parameter.mutability.incompatible"
     const val HIDDEN_FIELD_ASSIGNED = "field.hidden.assigned"
     const val CONFLICTING_PATH_RESTRICTIONS = "annotation.restricted.conflicting"
+    const val NON_VARIABLE_ARGUMENT = "argument.non.variable"
 }

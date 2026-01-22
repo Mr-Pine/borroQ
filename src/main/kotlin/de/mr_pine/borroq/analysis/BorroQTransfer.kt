@@ -20,8 +20,10 @@ import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
+import org.checkerframework.dataflow.expression.FieldAccess
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
+import org.checkerframework.dataflow.expression.ValueLiteral
 import org.checkerframework.javacutil.ElementUtils
 import org.checkerframework.javacutil.TreeUtils
 import org.checkerframework.javacutil.TypesUtils
@@ -304,6 +306,18 @@ class BorroQTransfer(
             }
 
             val argumentPermissions = arguments.zip(signature.parameters).map { (arg, type) ->
+                if (when (JavaExpression.fromNode(arg)) {
+                        is LocalVariable, is ValueLiteral -> false
+                        is FieldAccess if Path.fromNode(arg).root == PathRoot.StaticPathRoot -> false
+                        else -> true
+                    }
+                ) {
+                    silentExceptionReportContext(arg.tree!!) {
+                        throw NonLocalVariableArgumentException()
+                    }
+                    return@map null
+                }
+
                 if (type == null) return@map null
                 val permission = exceptionReportContext(arg.tree!!) {
                     store.chooseAndRemoveArgumentPermission(
