@@ -4,11 +4,13 @@ import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionExcept
 import de.mr_pine.borroq.analysis.exceptions.TopPermissionEncounteredException
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
-import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.IMutability
 import org.checkerframework.dataflow.analysis.Store
 import org.checkerframework.dataflow.cfg.node.Node
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
 import org.checkerframework.dataflow.expression.*
+import kotlin.random.Random
+import kotlin.random.nextInt
 
 /**
  * Stores the permissions of local variables and the this receiver as well as the borrow list.
@@ -24,11 +26,22 @@ data class BorroQStore(
 
     override fun copy() = BorroQStore(variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
 
+    fun createFreshId(variable: LocalVariable): Id {
+        val name = variable.element.simpleName.toString()
+        val nonce = Random.nextInt(0..Int.MAX_VALUE)
+
+        return Id(name, nonce)
+    }
+
     fun updatePermission(target: Node, permission: VariablePermission) {
         when (val expression = JavaExpression.fromNode(target)) {
-            is LocalVariable -> variablePermissions[expression] = permission
+            is LocalVariable -> updatePermission(expression, permission)
             else -> TODO()
         }
+    }
+
+    fun updatePermission(target: LocalVariable, permission: VariablePermission) {
+        variablePermissions[target] = permission
     }
 
     fun updateThisPermission(permission: VariablePermission) {
@@ -36,7 +49,7 @@ data class BorroQStore(
     }
 
     @Throws(InsufficientShallowPermissionException::class, TopPermissionEncounteredException::class)
-    fun chooseAndRemoveArgumentPermission(argument: Node, shallowMutability: Mutability): VariablePermission? {
+    fun chooseAndRemoveArgumentPermission(argument: Node, shallowMutability: IMutability): VariablePermission? {
         val availablePermission = when (val expression = JavaExpression.fromNode(argument)) {
             is LocalVariable -> variablePermissions[expression]
                 ?: null!!
@@ -58,7 +71,7 @@ data class BorroQStore(
         return split
     }
 
-    fun chooseAndRemoveThisReceiverPermission(mutability: Mutability): VariablePermission {
+    fun chooseAndRemoveThisReceiverPermission(mutability: IMutability): VariablePermission {
         val availablePermission = thisPermission
 
         val (split, remaining) = when (availablePermission) {

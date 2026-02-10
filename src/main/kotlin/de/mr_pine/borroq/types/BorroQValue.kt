@@ -13,6 +13,12 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
         get() = false
 
     data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
+        init {
+            if (attachedBorrows.isNotEmpty()) {
+                System.err.println("Warning: FreePermission has attached borrows")
+            }
+        }
+
         override val hasShallowMutability: Boolean
             get() = permission.fraction == Rational.ONE
         override val hasShallowReadability: Boolean

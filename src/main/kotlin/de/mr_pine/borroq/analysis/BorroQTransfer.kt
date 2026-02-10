@@ -14,9 +14,11 @@ import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
+import de.mr_pine.borroq.types.specifiers.IMutability
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.ReleaseMode
 import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode
+import de.mr_pine.borroq.types.specifiers.Scope
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.node.*
@@ -50,10 +52,16 @@ class BorroQTransfer(
 
     private var parameters: List<LocalVariableNode>? = null
 
+    private val IMutability.fraction: Rational
+        get() = when (this) {
+            is IMutability.Mutable -> Rational.ONE
+            is IMutability.Immutable -> ImmutableFraction
+        }
+
     private val Mutability.fraction: Rational
         get() = when (this) {
-            is Mutability.Mutable -> Rational.ONE
-            is Mutability.Immutable -> ImmutableFraction
+            Mutability.MUTABLE -> Rational.ONE
+            Mutability.IMMUTABLE -> ImmutableFraction
         }
 
     private val Node.annotatedType: TypeMirror
@@ -137,14 +145,14 @@ class BorroQTransfer(
 
         val parameterPermissions = parameters.zip(signatureType.parameters).mapNotNull { (parameter, parameterType) ->
             val permission = when (parameterType?.mutability ?: return@mapNotNull null) {
-                is Mutability.Mutable -> Permission(Rational.ONE)
-                is Mutability.Immutable -> Permission(ImmutableFraction)
+                is IMutability.Mutable -> Permission(Rational.ONE)
+                is IMutability.Immutable -> Permission(ImmutableFraction)
             }
             val localVariable = JavaExpression.fromNode(parameter) as LocalVariable
             localVariable to (permission.withId(Id.fromNode(parameter)) as VariablePermission)
         }.toMap().toMutableMap()
 
-        context(mutability: Mutability, paramSource: Tree)
+        context(mutability: IMutability, paramSource: Tree)
         fun calculateBorrows(
             borrowBase: IdPath, baseType: TypeElement, paths: List<PathTail>
         ): List<Borrow> {
@@ -155,13 +163,13 @@ class BorroQTransfer(
             val unmentioned = typeFields.filter { field -> paths.none { it.fields.first() == field } }
             val unmentionedBorrows = unmentioned.map { field ->
                 val fraction = memberTypeAnalysis.getFieldMutability(field)
-                    ?.let { if (it is Mutability.Mutable) Rational.ONE else ImmutableFraction } ?: ImmutableFraction
+                    ?.let { if (it is IMutability.Mutable) Rational.ONE else ImmutableFraction } ?: ImmutableFraction
                 Borrow(borrowBase.with(field), fraction, Borrow.Identifier.Dummy)
             }
 
             val mentionedBorrows = paths.groupBy { it.fields.first() }.flatMap { (field, paths) ->
                 if (paths.size == 1 && paths.single().fields.size == 1) {
-                    if (memberTypeAnalysis.getFieldMutability(field) !is Mutability.Mutable && mutability is Mutability.Mutable) checker.reportWarning(
+                    if (memberTypeAnalysis.getFieldMutability(field) !is IMutability.Mutable && mutability is IMutability.Mutable) checker.reportWarning(
                         paramSource, Messages.IMMUTABLE_FIELD_IN_MUTABLE_ANNOTATION, field.simpleName
                     )
                     return@flatMap emptyList<Borrow>()
@@ -189,8 +197,8 @@ class BorroQTransfer(
         val receiverPermission = when (signatureType.receiverType?.mutability) {
             null -> if (TreeUtils.isConstructor(methodAST.method)) Permission(Rational.ONE) else null
 
-            is Mutability.Mutable -> Permission(Rational.ONE)
-            is Mutability.Immutable -> Permission(ImmutableFraction)
+            is IMutability.Mutable -> Permission(Rational.ONE)
+            is IMutability.Immutable -> Permission(ImmutableFraction)
         }?.withId(ThisId)
         val receiverBorrows = if (signatureType.receiverType != null) run {
             val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
@@ -203,7 +211,7 @@ class BorroQTransfer(
         } else if (TreeUtils.isConstructor(methodAST.method)) {
             val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
             context(
-                Mutability.Mutable(emptyList()), methodAST.method.receiverParameter ?: methodAST.method!!
+                IMutability.Mutable(emptyList()), methodAST.method.receiverParameter ?: methodAST.method!!
             ) { calculateBorrows(IdPath(ThisId), baseType, emptyList()) }
         } else emptyList()
 
@@ -241,7 +249,7 @@ class BorroQTransfer(
         for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
             val path = basePath.with(pathTail)
             context(store, store.getBorrows(), memberTypeAnalysis) {
-                val allowsRequiredMutability = if (type.mutability is Mutability.Mutable) path.asIdPath()
+                val allowsRequiredMutability = if (type.mutability is IMutability.Mutable) path.asIdPath()
                     .allowsDeepMutability() else path.asIdPath().allowsDeepReadability()
                 if (!allowsRequiredMutability) {
                     throw InsufficientDeepPermissionException(path, type.mutability)
@@ -253,8 +261,8 @@ class BorroQTransfer(
             .filterValues { it is SingleReleaseMode.Borrow || it is SingleReleaseMode.Move }) {
             val path = basePath.with(pathTail)
             val fraction = when (type.mutability) {
-                is Mutability.Mutable -> Rational.ONE
-                is Mutability.Immutable -> ImmutableFraction
+                is IMutability.Mutable -> Rational.ONE
+                is IMutability.Immutable -> ImmutableFraction
             }
             val tempBorrow = Borrow(path.asIdPath(), fraction, Borrow.Identifier.Dummy)
             store.addBorrow(tempBorrow)
@@ -263,22 +271,60 @@ class BorroQTransfer(
         }
     }
 
-    private fun VariablePermission?.validateMutability(tree: Tree, mutability: Mutability) = also {
+    private fun VariablePermission?.validateMutability(tree: Tree, mutability: IMutability) = also {
         silentExceptionReportContext(tree) {
             when (mutability) {
-                is Mutability.Mutable -> if (!(it?.hasShallowMutability
+                is IMutability.Mutable -> if (!(it?.hasShallowMutability
                         ?: false)
                 ) throw InsufficientShallowPermissionException(
                     "this", mutability, it
                 )
 
-                is Mutability.Immutable -> if (!(it?.hasShallowReadability
+                is IMutability.Immutable -> if (!(it?.hasShallowReadability
                         ?: true)
                 ) throw InsufficientShallowPermissionException(
                     "this", mutability, it
                 )
             }
         }
+    }
+
+    data class Pseudoarg(val mutability: Mutability, val scope: Scope, val argument: BorroQValue, val argTree: Tree)
+    data class Pseudocall(val returnMutability: Mutability, val arguments: List<Pseudoarg>)
+
+    context(store: BorroQStore, tree: Tree, node: Node)
+    private fun processPseudoarg(pseudoarg: Pseudoarg) {
+        if (node.type.kind.isPrimitive || node.type.kind == TypeKind.VOID) return
+
+        val value = pseudoarg.argument
+
+        TODO("Ensure shallow readability")
+        if (pseudoarg.mutability == Mutability.MUTABLE) {
+            TODO("Ensure shallow mutability")
+        }
+
+        if (pseudoarg.scope.includesBase) {
+            TODO("Not sure if even necessry")
+        }
+        for (scopeTail in pseudoarg.scope.entries) {
+            TODO("Ensure deep readability on $scopeTail")
+            if (pseudoarg.mutability == Mutability.MUTABLE) {
+                TODO("Ensure deep mutability on $scopeTail")
+            }
+        }
+    }
+
+    context(store: BorroQStore, tree: Tree, node: Node)
+    private fun processPseudocall(
+        pseudocall: Pseudocall
+    ): RegularTransferResult<BorroQValue, BorroQStore> {
+
+        for (pseudoarg in pseudocall.arguments) {
+            context(pseudoarg.argTree) { processPseudoarg(pseudoarg) }
+        }
+
+        val result = BorroQValue.FreePermission(Permission(pseudocall.returnMutability.fraction), emptyList())
+        return node.regularResult(result, store, storeChanged = true)
     }
 
     context(store: BorroQStore, tree: Tree, node: Node)
@@ -408,16 +454,31 @@ class BorroQTransfer(
             }
         })
 
-        if (node.target.method.isConstructor && methodType.returnMutability is Mutability.Immutable && signatureType.returnMutability is Mutability.Mutable) silentExceptionReportContext(
+        if (node.target.method.isConstructor && methodType.returnMutability is IMutability.Immutable && signatureType.returnMutability is IMutability.Mutable) silentExceptionReportContext(
             node.tree!!
         ) {
             throw IncompatibleSuperConstructorMutability()
         }
 
+        val returnMutability = TODO("Only old mutability ${methodType.returnMutability} currently :(")
+
+        val receiverArg = methodType.receiverType?.let { receiverType ->
+            val argMutability = TODO("Only old mutability of ${receiverType.mutability}")
+            val scope = TODO("Need scope for ${receiverType}")
+            val receiver = input.getValueOfSubNode(node.target.receiver)
+            Pseudoarg(argMutability, scope, receiver!!, node.target.receiver.tree ?: node.tree!!)
+        }
+        val arguments = listOfNotNull(receiverArg) + node.arguments.zip(methodType.parameters)
+            .filterIsInstance<Pair<Node, SignatureType.ParameterType>>().map { (arg, paramType) ->
+                val argMutability = TODO("Only old mutability of ${paramType?.mutability}")
+                val scope = TODO("Need scope for ${paramType}")
+                Pseudoarg(argMutability, scope, input.getValueOfSubNode(arg)!!, arg.tree!!)
+            }
+
+        val pseudocall = Pseudocall(returnMutability, arguments)
+
         return context(input.regularStore, node.target.tree!!, node) {
-            processCallLike(
-                methodType, node.target.receiver, node.arguments
-            )
+            processPseudocall(pseudocall)
         }
     }
 
@@ -432,7 +493,7 @@ class BorroQTransfer(
 
         val targetMutabilityAnnotation = target.tree?.let {
             annotationQuery.getAssignmentLeftSideAnnotations(it)
-                ?.let { Mutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(target.type)) }
+                ?.let { IMutability.fromAnnotationsOnType(it, TypesUtils.getTypeElement(target.type)) }
         }
         require(targetMutabilityAnnotation?.onPaths == null) { "Local variable mutability annotation cannot be restricted on paths" }
 
@@ -442,9 +503,9 @@ class BorroQTransfer(
                 val targetId = Id.fromNode(target)
 
                 val unfulfilledMutability =
-                    targetMutabilityAnnotation is Mutability.Mutable && rhsValue.permission.fraction < Rational.ONE
+                    targetMutabilityAnnotation is IMutability.Mutable && rhsValue.permission.fraction < Rational.ONE
                 val unfulfilledReadability =
-                    targetMutabilityAnnotation is Mutability.Mutable && rhsValue.permission.fraction.isZero()
+                    targetMutabilityAnnotation is IMutability.Mutable && rhsValue.permission.fraction.isZero()
                 if (unfulfilledMutability || unfulfilledReadability) silentExceptionReportContext(
                     node.expression.tree!!
                 ) {
@@ -468,7 +529,7 @@ class BorroQTransfer(
                 val mutability = targetMutabilityAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
                 val (targetPermission, remainingPermission) = rhsValue.split(mutability)
 
-                if (mutability is Mutability.Mutable && targetPermission.fraction < Rational.ONE) silentExceptionReportContext(
+                if (mutability is IMutability.Mutable && targetPermission.fraction < Rational.ONE) silentExceptionReportContext(
                     node.tree!!
                 ) {
                     throw InsufficientShallowPermissionException(target.name, mutability, targetPermission)
@@ -556,8 +617,8 @@ class BorroQTransfer(
             null, input.regularStore, false
         )
         val fieldFraction = when (fieldMutability) {
-            is Mutability.Mutable -> Rational.ONE
-            is Mutability.Immutable -> ImmutableFraction
+            is IMutability.Mutable -> Rational.ONE
+            is IMutability.Immutable -> ImmutableFraction
         }
         val newValuePermission = input.getValueOfSubNode(node.expression)!!
 
@@ -600,13 +661,13 @@ class BorroQTransfer(
 
     fun validateTypeParameters(targetType: TypeMirror, valueType: TypeMirror, topLevel: Boolean) {
         val targetMutability =
-            Mutability.fromAnnotationsOnType(targetType.annotationMirrors, TypesUtils.getTypeElement(targetType))
+            IMutability.fromAnnotationsOnType(targetType.annotationMirrors, TypesUtils.getTypeElement(targetType))
                 ?: DefaultInference.inferTypeParameterMutability()
         val valueMutability =
-            Mutability.fromAnnotationsOnType(valueType.annotationMirrors, TypesUtils.getTypeElement(valueType))
+            IMutability.fromAnnotationsOnType(valueType.annotationMirrors, TypesUtils.getTypeElement(valueType))
                 ?: DefaultInference.inferTypeParameterMutability()
 
-        if (!topLevel && targetMutability is Mutability.Mutable && valueMutability is Mutability.Immutable) {
+        if (!topLevel && targetMutability is IMutability.Mutable && valueMutability is IMutability.Immutable) {
             throw IncompatibleTypeParameterMutabilities(targetType)
         }
 
@@ -649,7 +710,7 @@ class BorroQTransfer(
         require(!input.containsTwoStores()) { "Field access node $node has two stores" }
 
         val fieldPermission = memberTypeAnalysis.getFieldMutability(node.element)
-            .let { if (it is Mutability.Mutable) Permission(Rational.ONE) else Permission(ImmutableFraction) } // TODO: Correctly handle restrictions
+            .let { if (it is IMutability.Mutable) Permission(Rational.ONE) else Permission(ImmutableFraction) } // TODO: Correctly handle restrictions
 
         val receiverPath = when (node.receiver) {
             is FieldAccessNode -> {
@@ -707,8 +768,8 @@ class BorroQTransfer(
                     is SingleReleaseMode.Release, is SingleReleaseMode.Borrow -> {
                         val permissionSum = store.localPermissionSum(baseId)
                         val permissionTarget = when (signatureType.receiverType?.mutability) {
-                            is Mutability.Immutable -> ImmutableFraction
-                            is Mutability.Mutable -> Rational.ONE
+                            is IMutability.Immutable -> ImmutableFraction
+                            is IMutability.Mutable -> Rational.ONE
                             null -> Rational.ZERO
                         }
 
@@ -776,7 +837,7 @@ class BorroQTransfer(
                 }
                 context(input.regularStore.getBorrows(), memberTypeAnalysis) {
                     when (signatureType.returnMutability) {
-                        is Mutability.Mutable -> {
+                        is IMutability.Mutable -> {
                             if (!basePermission.hasShallowMutability) throw IncompatibleReturnPermissionException(
                                 signatureType.returnMutability
                             )
@@ -785,7 +846,7 @@ class BorroQTransfer(
                             )
                         }
 
-                        is Mutability.Immutable -> {
+                        is IMutability.Immutable -> {
                             if (!basePermission.hasShallowReadability) throw IncompatibleReturnPermissionException(
                                 signatureType.returnMutability
                             )
@@ -820,22 +881,22 @@ class BorroQTransfer(
 
     // region array stuff
     override fun visitArrayCreation(node: ArrayCreationNode, input: Input): Result {
-        val arguments = List(node.initializers.size) {
-            val elementType = (node.type as Type.ArrayType).elemtype
-            if (elementType.isPrimitive) return@List null
+        val elementType = (node.type as Type.ArrayType).elemtype
 
+        val pseudoargs = if (elementType.isPrimitive) {
             val elementMutability =
                 Mutability.fromAnnotationsOnType(elementType.annotationMirrors, TypesUtils.getTypeElement(elementType))
                     ?: DefaultInference.inferArrayElementMutability()
+            val scope = TODO("Full scope if mutable")
+            node.initializers.map {
+                Pseudoarg(elementMutability, scope, input.getValueOfSubNode(it)!!, it.tree!!)
+            }
+        } else emptyList()
 
-            SignatureType.ParameterType(elementMutability, SingleReleaseMode.Borrow(null))
-        }
-        val syntheticSignature = SignatureType(Mutability.Mutable(null), null, arguments)
+        val pseudocall = Pseudocall(Mutability.MUTABLE, pseudoargs)
 
         return context(input.regularStore, node.tree!!, node) {
-            processCallLike(
-                syntheticSignature, null, node.initializers
-            )
+            processPseudocall(pseudocall)
         }
     }
 
@@ -843,14 +904,14 @@ class BorroQTransfer(
         node: ArrayAccessNode, p: Input
     ): Result {
         val componentMutability = node.array.annotatedType.let { it as ArrayType }.componentType.let {
-            Mutability.fromAnnotationsOnType(
+            IMutability.fromAnnotationsOnType(
                 it.annotationMirrors, TypesUtils.getTypeElement(it)
             )
         } ?: DefaultInference.inferTypeParameterMutability()
 
         val syntheticSignatureType = SignatureType(
             componentMutability, SignatureType.ParameterType(
-                Mutability.Immutable(null), SingleReleaseMode.Borrow(null)
+                IMutability.Immutable(null), SingleReleaseMode.Borrow(null)
             ), listOf(null)
         )
         return context(p.regularStore, node.tree!!, node) {

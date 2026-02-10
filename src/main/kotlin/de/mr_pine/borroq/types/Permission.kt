@@ -1,18 +1,18 @@
 package de.mr_pine.borroq.types
 
-import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.IMutability
 
 open class Permission(val fraction: Rational) {
 
     /**
-     * @param hint A hint to the split of how the permission should be split. If [de.mr_pine.borroq.types.specifiers.Mutability.Mutable] is specified, the whole permission is split, leaving a `0` permission
+     * @param hint A hint to the split of how the permission should be split. If [de.mr_pine.borroq.types.specifiers.IMutability.Mutable] is specified, the whole permission is split, leaving a `0` permission
      *
      * @return `splitPermission to remainingPermission`
      */
-    open fun split(hint: Mutability): Pair<Permission, Permission> {
+    open fun split(hint: IMutability): Pair<Permission, Permission> {
         val splitFraction = when (hint) {
-            is Mutability.Mutable -> this.fraction
-            is Mutability.Immutable -> this.fraction / 2
+            is IMutability.Mutable -> this.fraction
+            is IMutability.Immutable -> this.fraction / 2
         }
         return Permission(splitFraction) to Permission(fraction - splitFraction)
     }

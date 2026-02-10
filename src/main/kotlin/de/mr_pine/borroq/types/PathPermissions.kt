@@ -3,14 +3,14 @@ package de.mr_pine.borroq.types
 import de.mr_pine.borroq.analysis.BorroQStore
 import de.mr_pine.borroq.analysis.BorroQTransfer
 import de.mr_pine.borroq.analysis.MemberTypeAnalysis
-import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.IMutability
 
 context(memberTypeAnalysis: MemberTypeAnalysis)
 fun IdPath.fieldPermission(): Permission? {
     val mutability = memberTypeAnalysis.getFieldMutability(tail.fields.lastOrNull() ?: return null) ?: return null
     return when (mutability) { // TODO: Sanity check
-        is Mutability.Mutable -> Permission(Rational.ONE)
-        is Mutability.Immutable -> Permission(BorroQTransfer.ImmutableFraction)
+        is IMutability.Mutable -> Permission(Rational.ONE)
+        is IMutability.Immutable -> Permission(BorroQTransfer.ImmutableFraction)
     }
 }
 
