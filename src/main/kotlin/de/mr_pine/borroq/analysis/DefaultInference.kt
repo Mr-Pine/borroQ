@@ -2,37 +2,29 @@ package de.mr_pine.borroq.analysis
 
 import de.mr_pine.borroq.types.BorroQValue
 import de.mr_pine.borroq.types.Rational
-import de.mr_pine.borroq.types.specifiers.IMutability
-import de.mr_pine.borroq.types.specifiers.IMutability.Immutable
-import de.mr_pine.borroq.types.specifiers.IMutability.Mutable
+import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.Mutability.IMMUTABLE
-import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Borrow
-import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Release
+import de.mr_pine.borroq.types.specifiers.Mutability.MUTABLE
 
 object DefaultInference {
-    fun inferVariableMutability(assignedValue: BorroQValue): IMutability {
+    fun inferVariableMutability(assignedValue: BorroQValue): Mutability {
         return when (assignedValue) {
-            is BorroQValue.FieldAccess if assignedValue.fieldPermission.fraction == Rational.ONE -> Mutable(
-                null
-            )
+            is BorroQValue.FieldAccess if assignedValue.fieldPermission.fraction == Rational.ONE -> MUTABLE
 
-            else -> Immutable(null)
+            else -> IMMUTABLE
         }
     }
 
-    fun inferConstructorReturnMutability() = Mutable(null)
+    fun inferConstructorReturnMutability() = MUTABLE
 
-    fun inferReceiverMutability() = Immutable(null)
-    fun inferReceiverReleaseMode() = Release(null)
+    fun inferReceiverMutability() = IMMUTABLE
 
-    fun inferReturnMutability() = Immutable(null)
+    fun inferReturnMutability() = IMMUTABLE
 
     fun inferArrayElementMutability() = IMMUTABLE
 
-    fun inferParameterMutability(isConstructor: Boolean) = Immutable(null)
-    fun inferParameterReleaseMode(isConstructor: Boolean) = if (isConstructor) Borrow(null) else Release(null)
+    fun inferParameterMutability(isConstructor: Boolean) = IMMUTABLE
 
-    fun inferTypeParameterIMutability() = Immutable(null)
     fun inferTypeParameterMutability() = IMMUTABLE
 
     fun inferFieldAccessMutability() = IMMUTABLE

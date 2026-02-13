@@ -1,26 +1,27 @@
 @file:Suppress("JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE")
 
-package de.mr_pine.borroq.analysis
+package de.mr_pine.borroq.analysis.transfer
 
 import com.sun.source.tree.Tree
 import com.sun.tools.javac.code.Type
 import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
-import de.mr_pine.borroq.analysis.Configuration.BorrowQExtensions.Extension
+import de.mr_pine.borroq.analysis.BorroQStore
+import de.mr_pine.borroq.analysis.Configuration.BorroQExtensions.Extension
+import de.mr_pine.borroq.analysis.DefaultInference
 import de.mr_pine.borroq.analysis.exceptions.*
-import de.mr_pine.borroq.analysis.livevariable.LiveVarNode
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.IMutability
 import de.mr_pine.borroq.types.specifiers.Mutability
-import de.mr_pine.borroq.types.specifiers.ReleaseMode
-import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode
 import de.mr_pine.borroq.types.specifiers.Scope
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.checkerframework.dataflow.analysis.*
+import org.checkerframework.dataflow.analysis.AnalysisResult
+import org.checkerframework.dataflow.analysis.RegularTransferResult
+import org.checkerframework.dataflow.analysis.UnusedAbstractValue
 import org.checkerframework.dataflow.cfg.UnderlyingAST
 import org.checkerframework.dataflow.cfg.block.Block
 import org.checkerframework.dataflow.cfg.block.ExceptionBlock
@@ -41,17 +42,15 @@ import kotlin.contracts.ExperimentalContracts
 
 private val logger = KotlinLogging.logger { }
 
-private typealias Result = TransferResult<BorroQValue, BorroQStore>
-private typealias Input = TransferInput<BorroQValue, BorroQStore>
 
 class BorroQTransfer(
     private val signatureType: SignatureType,
-    private val memberTypeAnalysis: MemberTypeAnalysis,
+    private val memberTypeAnalysis: de.mr_pine.borroq.analysis.MemberTypeAnalysis,
     private val liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
     private val checker: BorroQChecker,
-    private val annotationQuery: AnnotationQuery,
-    private val configuration: Configuration
-) : AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<BorroQValue, BorroQStore> {
+    private val annotationQuery: de.mr_pine.borroq.analysis.AnnotationQuery,
+    private val configuration: de.mr_pine.borroq.analysis.Configuration
+) : BorroQNoopTransfer(liveness, checker, configuration) {
 
     private var parameters: List<LocalVariableNode>? = null
 
@@ -73,42 +72,6 @@ class BorroQTransfer(
             is JCTree.JCVariableDecl -> tree.sym
             else -> null
         }?.asType() ?: type
-
-    fun Node.regularResult(
-        value: BorroQValue?, store: BorroQStore, storeChanged: Boolean = true
-    ): RegularTransferResult<BorroQValue, BorroQStore> {
-        fun toVariable(node: Node): LocalVariableNode? = when (node) {
-            is FieldAccessNode -> toVariable(node.receiver)
-            is LocalVariableNode -> node
-            else -> null
-        }
-
-        fun Set<LiveVarNode>?.liveVariables() =
-            orEmpty().asSequence().mapNotNull { toVariable(it.liveVariable) }.toSet()
-
-        val diedVariables =
-            liveness.getStoreBefore(this)?.liveVariables.liveVariables() - liveness.getStoreAfter(this)?.liveVariables.liveVariables()
-
-
-        for (variable in diedVariables) {
-            store.killVariable(variable)
-        }
-
-        fun Set<LiveVarNode>?.liveIds() =
-            liveVariables().mapNotNull { store.queryPermission(it) as IdentifiedPermission? }.map { it.id }.toSet()
-
-        val diedIds =
-            liveness.getStoreBefore(this)?.liveVariables.liveIds() - liveness.getStoreAfter(this)?.liveVariables.liveIds()
-
-        for (id in diedIds) {
-            val removedBorrows = store.removeInactiveBorrowsWithId(id)
-            removedBorrows.filter { it.path.tail.fields.isEmpty() }.forEach {
-                store.recombineAny(Permission(it.fraction).withId(it.path.id))
-            }
-        }
-
-        return RegularTransferResult(value, store, storeChanged)
-    }
 
     @OptIn(ExperimentalContracts::class)
     private inline fun silentExceptionReportContext(
@@ -146,7 +109,7 @@ class BorroQTransfer(
     ): BorroQStore {
         this.parameters = parameters.toList()
         if (parameters.size != 2) {
-            configuration.borrowQExtensions.requireExtension(
+            configuration.borroQExtensions.requireExtension(
                 Extension.ANY_PARAMETER_COUNT,
                 underlyingAST.code!!,
                 checker
@@ -154,19 +117,16 @@ class BorroQTransfer(
         }
 
         val parameterPermissions = parameters.zip(signatureType.parameters).mapNotNull { (parameter, parameterType) ->
-            val mutability = if ((parameterType?.mutability
-                    ?: return@mapNotNull null) is IMutability.Mutable
-            ) Mutability.MUTABLE else Mutability.IMMUTABLE
-            val permission = Permission(mutability.fraction)
+            val permission = Permission((parameterType ?: return@mapNotNull null).mutability.fraction)
             val localVariable = JavaExpression.fromNode(parameter) as LocalVariable
             val id = Id.fromNode(parameter)
 
-            localVariable to (permission.withId(Id.fromNode(parameter)) as VariablePermission)
+            localVariable to (permission.withId(id) as VariablePermission)
         }.toMap().toMutableMap()
 
         fun borrowsFromScope(id: Id, scope: Scope, source: Tree): List<Borrow> {
             if (scope.entries.any { it.fields.size > 1 }) {
-                configuration.borrowQExtensions.requireExtension(Extension.NESTED_FIELD_ACCESS, source, checker)
+                configuration.borroQExtensions.requireExtension(Extension.NESTED_FIELD_ACCESS, source, checker)
             }
             if (scope.includesBase) TODO("Base in scope")
 
@@ -216,35 +176,16 @@ class BorroQTransfer(
         val thisBorrows = borrowsFromScope(ThisId, TODO("Get scope for this"), underlyingAST.code!!)
 
         val methodAST = underlyingAST as UnderlyingAST.CFGMethod
-        val receiverPermission = when (signatureType.receiverType?.mutability) {
-            null -> if (TreeUtils.isConstructor(methodAST.method)) Permission(Rational.ONE) else null
 
-            is IMutability.Mutable -> Permission(Rational.ONE)
-            is IMutability.Immutable -> Permission(ImmutableFraction)
-        }?.withId(ThisId)
-        val receiverBorrows = if (signatureType.receiverType != null) run {
-            val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
-
-            val onPaths = signatureType.receiverType!!.mutability.onPaths ?: return@run emptyList()
-
-            context(
-                signatureType.receiverType.mutability, methodAST.method.receiverParameter ?: methodAST.method!!
-            ) { calculateBorrows(IdPath(ThisId), baseType, onPaths) }
-        } else if (TreeUtils.isConstructor(methodAST.method)) {
-            val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
-            context(
-                IMutability.Mutable(emptyList()), methodAST.method.receiverParameter ?: methodAST.method!!
-            ) { calculateBorrows(IdPath(ThisId), baseType, emptyList()) }
-        } else emptyList()
+        val thisFraction = signatureType.receiverType?.mutability?.fraction
+            ?: if (TreeUtils.isConstructor(methodAST.method)) Rational.ONE else null
+        val thisPermission = thisFraction?.let { IdentifiedPermission(it, ThisId) }
+        //  val baseType = TreeUtils.elementFromDeclaration(methodAST.classTree)
 
         return BorroQStore(
-            parameterPermissions, receiverPermission, (parameterBorrows + receiverBorrows).toMutableList()
+            parameterPermissions, thisPermission, (parameterBorrows + thisBorrows).toMutableList()
         )
     }
-
-    fun doNothing(
-        node: Node, input: Input
-    ): Result = node.regularResult(null, input.regularStore, false)
 
     override fun visitNode(
         node: Node, p: Input
@@ -390,7 +331,8 @@ class BorroQTransfer(
             }
 
             is IdentifiedPermission -> {
-                val mutability = targetMutabilityAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
+                val mutability = targetMutabilityAnnotation
+                    ?: de.mr_pine.borroq.analysis.DefaultInference.inferVariableMutability(rhsValue)
                 val (targetPermission, remainingPermission) = rhsValue.split(mutability)
 
                 if (mutability is IMutability.Mutable && targetPermission.fraction < Rational.ONE) silentExceptionReportContext(
@@ -420,7 +362,8 @@ class BorroQTransfer(
                         input.regularStore.getBorrows().first { it.path.isPrefixOf(idAccessPath) })
                 }
 
-                val mutability = targetMutabilityAnnotation ?: DefaultInference.inferVariableMutability(rhsValue)
+                val mutability = targetMutabilityAnnotation
+                    ?: de.mr_pine.borroq.analysis.DefaultInference.inferVariableMutability(rhsValue)
                 val (usedVariablePermission, _) = rhsValue.fieldPermission.split(mutability)
                 val targetId = Id.fromNode(target)
                 val borrow = Borrow(
@@ -442,7 +385,7 @@ class BorroQTransfer(
         }
     }
 
-    context(store: BorroQStore, memberTypeAnalysis: MemberTypeAnalysis)
+    context(store: BorroQStore, memberTypeAnalysis: de.mr_pine.borroq.analysis.MemberTypeAnalysis)
     fun checkAssignability(receiver: Node, field: VariableElement) {
         val receiverPath = Path.fromNode(receiver)
         val receiverPathPermission = receiverPath.permission()
@@ -461,14 +404,7 @@ class BorroQTransfer(
             val parameterType = parameterIndex?.let { parameterIndex -> signatureType.parameters[parameterIndex]!! }
                 ?: signatureType.receiverType
 
-            val paths = parameterType?.mutability?.onPaths
-            if (paths != null) {
-                val hasPrefix = paths.any { it.isPrefixOf(accessPath.tail) }
-
-                if (!hasPrefix) {
-                    throw HiddenFieldAssignedException()
-                }
-            }
+            TODO("Check scoping")
         }
     }
 
@@ -580,7 +516,7 @@ class BorroQTransfer(
         }
 
         logger.warn { "Could not infer mutability for field access. Falling back to default." }
-        return DefaultInference.inferFieldAccessMutability()
+        return de.mr_pine.borroq.analysis.DefaultInference.inferFieldAccessMutability()
     }
 
     private fun inferFieldAccessMutability(node: FieldAccessNode): Mutability =
@@ -632,113 +568,40 @@ class BorroQTransfer(
         return node.regularResult(permission, input.regularStore, false)
     }
 
-    //region return/exit
-    fun validateExit(store: BorroQStore, returnValue: BorroQValue?, reportTree: Tree) {
-        fun validateReleaseMode(baseId: Id, releaseMode: ReleaseMode) {
-            val pathsReleaseMapping = releaseMode.pathsToSingleReleaseMode()
-            for ((pathTail, releaseMode) in pathsReleaseMapping) {
-                val path = IdPath(baseId, pathTail)
-
-                when (releaseMode) {
-                    is SingleReleaseMode.Release, is SingleReleaseMode.Borrow -> {
-                        val permissionSum = store.localPermissionSum(baseId)
-                        val permissionTarget = when (signatureType.receiverType?.mutability) {
-                            is IMutability.Immutable -> ImmutableFraction
-                            is IMutability.Mutable -> Rational.ONE
-                            null -> Rational.ZERO
-                        }
-
-                        if (permissionTarget > permissionSum) silentExceptionReportContext(reportTree) {
-                            throw ReleasePermissionMissingException(baseId.name)
-                        }
-
-                        val borrowIdExclude: Borrow.Identifier? =
-                            if (releaseMode is SingleReleaseMode.Borrow) (returnValue as? IdentifiedPermission)?.id else null
-
-                        val conflictingPaths =
-                            store.getBorrows().filter { it.path.isPrefixOf(path) || path.isPrefixOf(it.path) }
-                                .filter { it.id != borrowIdExclude }
-                        if (conflictingPaths.isNotEmpty()) silentExceptionReportContext(reportTree) {
-                            val borrow = conflictingPaths.first()
-                            throw ReleaseBorrowConflictException(path, borrow.id, borrow.path)
-                        }
-                    }
-
-                    is SingleReleaseMode.Move -> {}
-                }
-            }
-        }
-
-        signatureType.receiverType?.let { validateReleaseMode(ThisId, it.releaseMode) }
-
-        for ((parameter, paramType) in parameters!!.zip(signatureType.parameters)) {
-            paramType ?: continue // primitive
-            val id = Id.fromNode(parameter)
-
-            validateReleaseMode(id, paramType.releaseMode)
-        }
-    }
-
     override fun visitReturn(
         node: ReturnNode, input: Input
-    ): Result = try {
-        exceptionReportContext(node.tree!!) {
-            if (signatureType.returnMutability == null) return node.regularResult(null, input.regularStore, false)
-            require(!input.containsTwoStores()) { "Return node $node with two stores" }
-            require(signatureType.returnMutability.onPaths == null) { "Return type cannot be restricted on paths" }
-
-            if (node.result == null) return node.regularResult(null, input.regularStore, false)
-
-            input.getValueOfSubNode(node.result)?.let {
-                val (basePermission, returnPath) = when (it) {
-                    is BorroQValue.FieldAccess -> {
-                        val idPath = context(input.regularStore) { it.access.asIdPath() }
-                        val base = when (it.access.root) {
-                            is PathRoot.StaticPathRoot -> TODO("Static field access in return is not supported")
-                            is PathRoot.ThisPathRoot -> input.regularStore.queryThisPermission()!!
-                            is PathRoot.LocalVariableRoot -> input.regularStore.queryPermission(it.access.root.variable)!!
-                        }
-                        (base to idPath)
-                    }
-
-                    is IdentifiedPermission -> it to IdPath(it.id)
-                    is BorroQValue.FreePermission -> {
-                        val dummyIdentifiedPermission = it.permission.withId(Id(""))
-                        dummyIdentifiedPermission to null
-                    }
-
-                    is BorroQValue.Primitive -> return@let
-                    is VariablePermission.Top -> throw TopPermissionEncounteredException("<return value>")
-                }
-                context(input.regularStore.getBorrows(), memberTypeAnalysis) {
-                    when (signatureType.returnMutability) {
-                        is IMutability.Mutable -> {
-                            if (!basePermission.hasShallowMutability) throw IncompatibleReturnPermissionException(
-                                signatureType.returnMutability
-                            )
-                            if (returnPath?.allowsDeepMutability() == false) throw IncompatibleReturnPermissionException(
-                                signatureType.returnMutability
-                            )
-                        }
-
-                        is IMutability.Immutable -> {
-                            if (!basePermission.hasShallowReadability) throw IncompatibleReturnPermissionException(
-                                signatureType.returnMutability
-                            )
-                            if (returnPath?.allowsDeepReadability() == false) throw IncompatibleReturnPermissionException(
-                                signatureType.returnMutability
-                            )
-                        }
-                    }
-                }
-            }
-
-            node.regularResult(input.getValueOfSubNode(node.result), input.regularStore, false)
+    ): Result {
+        val result = node.result
+        if (result == null) {
+            configuration.borroQExtensions.requireExtension(Extension.VOID_RETURN, node, checker)
+            return node.regularResult(
+                null,
+                input.regularStore,
+                false
+            )
+        } else if (result.type.kind.isPrimitive) {
+            return node.regularResult(
+                null,
+                input.regularStore,
+                false
+            )
         }
-    } catch (_: BorroQReportedException) {
-        node.regularResult(null, input.regularStore, false)
+
+        val returnPermission = input.getValueOfSubNode(result)!!
+
+        if (returnPermission !is IdentifiedPermission) TODO("Non-variable return")
+
+        val store = input.regularStore
+        if (!store.hasDeepReadability(returnPermission)) {
+            TODO("Report missing deep readability for return permission $returnPermission")
+        }
+
+        if (signatureType.returnMutability == Mutability.MUTABLE && !store.hasDeepMutability(returnPermission)) {
+            TODO("Report missing deep mutability for return permission $returnPermission")
+        }
+
+        return node.regularResult(null, store, false)
     }
-    //endregion
 
     override fun visitStringLiteral(
         node: StringLiteralNode, input: Input
@@ -750,7 +613,7 @@ class BorroQTransfer(
 
     override fun visitValueLiteral(node: ValueLiteralNode, p: Input): Result {
         if (node.type.kind != TypeKind.BOOLEAN) {
-            configuration.borrowQExtensions.requireExtension(Extension.ALL_PRIMITIVES, node, checker)
+            configuration.borroQExtensions.requireExtension(Extension.ALL_PRIMITIVES, node, checker)
         }
         return node.regularResult(
             null, p.regularStore
@@ -759,7 +622,7 @@ class BorroQTransfer(
 
     // region array stuff
     override fun visitArrayCreation(node: ArrayCreationNode, input: Input): Result {
-        configuration.borrowQExtensions.requireExtension(Extension.ARRAYS, node, checker)
+        configuration.borroQExtensions.requireExtension(Extension.ARRAYS, node, checker)
 
         val elementType = (node.type as Type.ArrayType).elemtype
 
@@ -783,7 +646,7 @@ class BorroQTransfer(
     override fun visitArrayAccess(
         node: ArrayAccessNode, input: Input
     ): Result {
-        configuration.borrowQExtensions.requireExtension(Extension.ARRAYS, node, checker)
+        configuration.borroQExtensions.requireExtension(Extension.ARRAYS, node, checker)
 
         val componentMutability = node.array.annotatedType.let { it as ArrayType }.componentType.let {
             Mutability.fromAnnotationsOnType(
@@ -803,7 +666,6 @@ class BorroQTransfer(
             processPseudocall(pseudocall)
         }
     }
-
     // endregion array stuff
 
     companion object {
@@ -819,78 +681,4 @@ class BorroQTransfer(
         }
         return visitNode(n, p)
     }
-
-    //region Noop visit functions
-    override fun visitVariableDeclaration(
-        n: VariableDeclarationNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitMarker(
-        n: MarkerNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitTernaryExpression(
-        n: TernaryExpressionNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitNumericalPlus(
-        n: NumericalPlusNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitNumericalAddition(
-        n: NumericalAdditionNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitNumericalSubtraction(
-        n: NumericalSubtractionNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitLessThan(
-        n: LessThanNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitIntegerRemainder(
-        n: IntegerRemainderNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitEqualTo(
-        n: EqualToNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitExpressionStatement(
-        n: ExpressionStatementNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitMethodAccess(
-        n: MethodAccessNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitClassName(
-        n: ClassNameNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-    //endregion
 }

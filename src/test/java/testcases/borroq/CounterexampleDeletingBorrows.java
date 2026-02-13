@@ -1,7 +1,6 @@
 package testcases.borroq;
 
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
 
 public class CounterexampleDeletingBorrows {
     static class Box {
@@ -11,13 +10,13 @@ public class CounterexampleDeletingBorrows {
         int value;
     }
     static class B {
-        B(@Mutable @Borrow Box x) {
+        B(@Mutable Box x) {
             this.x = x;
         }
         @Mutable Box x;
     }
     static class A {
-        A(@Mutable @Borrow B b) {
+        A(@Mutable B b) {
             this.b = b;
         }
 

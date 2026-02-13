@@ -1,20 +1,20 @@
 package testcases.borroq.rules;
 
+import de.mr_pine.borroq.qual.Scope;
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Release;
 
 public interface RuleUtil {
-    static void ensureMutable(@Mutable @Release Object x) {
+    static void ensureMutable(@Mutable Object x) {
     }
 
-    static void ensureRecMutable(@Mutable(".rec") @Release(".rec") A x) {
+    static void ensureRecMutable(@Mutable @Scope(".rec") A x) {
     }
 
-    static void ensureReadable(@Immutable @Release Object x) {
+    static void ensureReadable(@Immutable Object x) {
     }
 
-    static void ensureRecReadable(@Immutable(".rec") @Release(".rec") A x) {
+    static void ensureRecReadable(@Immutable @Scope(".rec") A x) {
     }
 
     class A {

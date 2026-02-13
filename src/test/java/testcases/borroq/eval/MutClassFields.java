@@ -2,8 +2,6 @@ package testcases.borroq.eval;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
-import de.mr_pine.borroq.qual.release.Release;
 
 public interface MutClassFields {
     class Box {
@@ -15,7 +13,7 @@ public interface MutClassFields {
     }
 
     class Cat {
-        Cat(@Mutable @Borrow Box meows, @Mutable @Borrow Box howHungry) {
+        Cat(@Mutable Box meows, @Mutable Box howHungry) {
             this.meows = meows;
             this.howHungry = howHungry;
         }

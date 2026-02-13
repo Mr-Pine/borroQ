@@ -1,18 +1,17 @@
 package testcases.borroq;
 
 import de.mr_pine.borroq.qual.mutability.*;
-import de.mr_pine.borroq.qual.release.Release;
 
 public class Simple {
     @Mutable Simple() {
 
     }
 
-    @Immutable String use(@Release @Immutable Simple this, @Release @Immutable Object o) {
+    @Immutable String use(@Immutable Simple this, @Immutable Object o) {
         return "Hi";
     }
 
-    void valid(@Release @Immutable Simple this) {
+    void valid(@Immutable Simple this) {
         @Mutable Object obj = new Object();
         @Mutable Object obj2 = new Object();
         @Immutable Object objCopy = obj;
@@ -22,7 +21,7 @@ public class Simple {
         use(objCopy);
     }
 
-    void invalid(@Release @Immutable Simple this) {
+    void invalid(@Immutable Simple this) {
         @Mutable Object obj = new Object();
         @Mutable Object obj2 = new Object();
         @Mutable Object objCopy = obj;

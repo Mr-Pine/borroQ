@@ -1,8 +1,6 @@
 package testcases.borroq.eval;
 
-import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Release;
 
 public interface MutCantAlias {
     class Box {
@@ -13,7 +11,7 @@ public interface MutCantAlias {
         int value;
     }
 
-    default void use(@Mutable @Release Object o) {
+    default void use(@Mutable Object o) {
     }
 
     default void main() {

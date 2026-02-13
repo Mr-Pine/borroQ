@@ -1,7 +1,6 @@
 package testcases.borroq.eval;
 
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Move;
 
 public interface ArrayMut {
     class Box {
@@ -12,7 +11,7 @@ public interface ArrayMut {
         int value;
     }
 
-    default void drop(@Mutable @Move Box value) {
+    default void drop(@Mutable Box value) {
     }
 
     default void main() {

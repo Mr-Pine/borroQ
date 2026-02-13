@@ -8,6 +8,7 @@ import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.analysis.*
 import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.livevariable.LiveVarTransfer
+import de.mr_pine.borroq.analysis.transfer.BorroQTransfer
 import de.mr_pine.borroq.types.BorroQValue
 import org.checkerframework.dataflow.analysis.BackwardAnalysisImpl
 import org.checkerframework.dataflow.cfg.ControlFlowGraph

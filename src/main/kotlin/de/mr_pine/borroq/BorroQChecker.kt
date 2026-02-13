@@ -6,7 +6,7 @@ import org.checkerframework.framework.source.SourceChecker
 import org.checkerframework.framework.source.SourceVisitor
 import org.checkerframework.framework.source.SupportedOptions
 
-@SupportedOptions(Configuration.BorrowQExtensions.KEY, Configuration.UnknownSyntaxStrictness.KEY)
+@SupportedOptions(Configuration.BorroQExtensions.KEY, Configuration.UnknownSyntaxStrictness.KEY)
 class BorroQChecker : SourceChecker() {
 
 

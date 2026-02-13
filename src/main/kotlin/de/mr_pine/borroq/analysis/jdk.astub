@@ -1,25 +1,24 @@
 package java.lang;
 import de.mr_pine.borroq.qual.mutability.*;
-import de.mr_pine.borroq.qual.release.*;
 
 public class Object {
     @Mutable Object();
-    boolean equals(@Immutable @Release Object this, @Immutable @Release Object other);
+    boolean equals(@Immutable Object this, @Immutable Object other);
 }
 
 public class String {
-    @Immutable String(@Immutable @Release String original);
-    char charAt(@Immutable @Release String this, int index);
-    @Immutable String substring(@Immutable @Release String this, int beginIndex);
+    @Immutable String(@Immutable String original);
+    char charAt(@Immutable String this, int index);
+    @Immutable String substring(@Immutable String this, int beginIndex);
 
     static @Immutable String valueOf(char c);
 
-    boolean equals(@Immutable @Release String this, @Immutable @Release Object other);
+    boolean equals(@Immutable String this, @Immutable Object other);
 }
 
 public class Integer {
     static @Immutable Integer valueOf(int i);
-    static int parseInt(@Immutable @Release String s);
+    static int parseInt(@Immutable String s);
 }
 
 public class System {
@@ -29,18 +28,18 @@ public class System {
 package java.io;
 
 public class PrintStream {
-    void println(@Immutable @Release PrintStream this, @Immutable @Release String str); // TODO: This should probably be @Mutable
+    void println(@Immutable PrintStream this, @Immutable String str); // TODO: This should probably be @Mutable
 }
 
 package java.util;
 
 public interface List<E> {
-    @Mutable E get(@Mutable @Borrow List<E> this, int index);
+    @Mutable E get(@Mutable List<E> this, int index);
 }
 
 public class Scanner {
 
-    bool hasNextLine(@Immutable @Release Scanner this);
-    @Immutable String nextLine(@Mutable @Release Scanner this);
-    void close(@Mutable @Move Scanner this);
+    bool hasNextLine(@Immutable Scanner this);
+    @Immutable String nextLine(@Mutable Scanner this);
+    void close(@Mutable Scanner this);
 }

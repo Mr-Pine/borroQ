@@ -1,13 +1,11 @@
 package testcases.borroq.rules;
 
-import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Release;
 
 import static testcases.borroq.rules.RuleUtil.*;
 
 public interface Rule4 {
-    static void a(@Mutable @Release A a) {
+    static void a(@Mutable A a) {
         @Mutable Object x = a.m2;
         ensureMutable(x);
         // :: error: permission.insufficient.shallow.borrowed

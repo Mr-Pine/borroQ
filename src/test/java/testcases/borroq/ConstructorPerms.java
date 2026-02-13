@@ -2,7 +2,6 @@ package testcases.borroq;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
 
 public interface ConstructorPerms {
     class A {
@@ -24,7 +23,7 @@ public interface ConstructorPerms {
     }
 
     class B {
-        B(@Mutable @Borrow Object x) {
+        B(@Mutable Object x) {
 
         }
     }

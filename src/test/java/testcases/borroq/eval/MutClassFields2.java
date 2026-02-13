@@ -2,8 +2,7 @@ package testcases.borroq.eval;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
-import de.mr_pine.borroq.qual.release.Release;
+
 
 public interface MutClassFields2 {
     class Box {
@@ -15,7 +14,7 @@ public interface MutClassFields2 {
     }
 
     class Cat {
-        Cat(@Mutable @Borrow Box meows, @Mutable @Borrow Box howHungry) {
+        Cat(@Mutable Box meows, @Mutable Box howHungry) {
             this.meows = meows;
             this.howHungry = howHungry;
         }
@@ -23,7 +22,7 @@ public interface MutClassFields2 {
         @Mutable Box meows;
         @Mutable Box howHungry;
 
-        void eat(@Immutable @Release Cat this) {
+        void eat(@Immutable Cat this) {
             // :: error: permission.insufficient.shallow.assignment.target.receiver
             meows.value = meows.value - 5;
         }

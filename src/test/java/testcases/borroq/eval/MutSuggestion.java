@@ -2,8 +2,6 @@ package testcases.borroq.eval;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
-import de.mr_pine.borroq.qual.release.Release;
 
 public interface MutSuggestion {
     class Box {
@@ -18,7 +16,7 @@ public interface MutSuggestion {
         void mutate(@Mutable S this) {}
     }
 
-    default void func(@Immutable @Release S s) {
+    default void func(@Immutable S s) {
         // :: error: permission.insufficient.shallow
         s.mutate();
     }

@@ -1,14 +1,14 @@
 package de.mr_pine.borroq.analysis
 
-import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionException
-import de.mr_pine.borroq.analysis.exceptions.TopPermissionEncounteredException
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
-import de.mr_pine.borroq.types.specifiers.IMutability
 import org.checkerframework.dataflow.analysis.Store
 import org.checkerframework.dataflow.cfg.node.Node
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
-import org.checkerframework.dataflow.expression.*
+import org.checkerframework.dataflow.expression.FieldAccess
+import org.checkerframework.dataflow.expression.JavaExpression
+import org.checkerframework.dataflow.expression.LocalVariable
+import org.checkerframework.dataflow.expression.ThisReference
 import kotlin.random.Random
 import kotlin.random.nextInt
 
@@ -46,44 +46,6 @@ data class BorroQStore(
 
     fun updateThisPermission(permission: VariablePermission) {
         thisPermission = permission
-    }
-
-    @Throws(InsufficientShallowPermissionException::class, TopPermissionEncounteredException::class)
-    fun chooseAndRemoveArgumentPermission(argument: Node, shallowMutability: IMutability): VariablePermission? {
-        val availablePermission = when (val expression = JavaExpression.fromNode(argument)) {
-            is LocalVariable -> variablePermissions[expression]
-                ?: null!!
-
-            is ValueLiteral -> return null
-            is FieldAccess if Path.fromNode(argument).root == PathRoot.StaticPathRoot -> return Permission(Rational.HALF).withId(
-                Id("<<static>>")
-            ) // TODO: This is not great
-            else -> TODO("non local-var argument: $expression ${expression.javaClass}")
-        }
-
-        val (split, remaining) = when (availablePermission) {
-            is VariablePermission.Top -> throw TopPermissionEncounteredException(argument.toString())
-            is IdentifiedPermission -> availablePermission.split(shallowMutability)
-        }
-
-        updatePermission(argument, remaining)
-
-        return split
-    }
-
-    fun chooseAndRemoveThisReceiverPermission(mutability: IMutability): VariablePermission {
-        val availablePermission = thisPermission
-
-        val (split, remaining) = when (availablePermission) {
-            is VariablePermission.Top -> throw TopPermissionEncounteredException("this")
-            is IdentifiedPermission -> availablePermission.split(mutability)
-
-            null -> throw IllegalStateException("No this permission available")
-        }
-
-        updateThisPermission(remaining)
-
-        return split
     }
 
     fun recombine(receiver: LocalVariable, permission: IdentifiedPermission) {
@@ -159,11 +121,6 @@ data class BorroQStore(
 
     fun queryThisPermission(): VariablePermission? = thisPermission
 
-    fun hasShallowMutability(id: Id): Boolean {
-        return variablePermissions.values.filter { (it as? IdentifiedPermission)?.fraction?.isZero() != true }
-            .all { it is IdentifiedPermission && it.id == id && it.hasShallowMutability }
-    }
-
     fun localPermissionSum(id: Id) =
         (variablePermissions.values + thisPermission).filterIsInstance<IdentifiedPermission>().filter { it.id == id }
             .fold(
@@ -174,10 +131,6 @@ data class BorroQStore(
 
     fun addBorrow(borrow: Borrow) {
         borrowList.add(borrow)
-    }
-
-    fun removeBorrow(borrow: Borrow) {
-        borrowList.remove(borrow)
     }
 
     fun removeBorrowsWithId(id: Id): List<Borrow> {
@@ -196,6 +149,14 @@ data class BorroQStore(
         val toRemove = borrowList.filter { path.isPrefixOf(it.path) }
         borrowList.removeAll(toRemove)
         return toRemove
+    }
+
+    fun hasDeepReadability(permission: IdentifiedPermission): Boolean {
+        TODO()
+    }
+
+    fun hasDeepMutability(permission: IdentifiedPermission): Boolean {
+        TODO()
     }
 
     override fun leastUpperBound(other: BorroQStore?): BorroQStore {

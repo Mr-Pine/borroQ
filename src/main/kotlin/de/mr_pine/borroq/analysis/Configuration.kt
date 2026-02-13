@@ -10,7 +10,7 @@ private val logger = KotlinLogging.logger { }
 
 data class Configuration(
     val unknownSyntaxStrictness: UnknownSyntaxStrictness,
-    val borrowQExtensions: BorrowQExtensions
+    val borroQExtensions: BorroQExtensions
 ) {
     interface ConfigOption<T : ConfigOption.ConfigValue> {
         interface ConfigValue {
@@ -28,7 +28,7 @@ data class Configuration(
         STRICT, WARN_UNKNOWN, ALLOW_UNKNOWN;
 
         companion object : ConfigOption<UnknownSyntaxStrictness> {
-            const val KEY = "unknown-strictness"
+            const val KEY = "unknown_strictness"
             override val optionKey = KEY
             override val default = STRICT
             override fun fromString(string: String) = valueOf(string.uppercase().replace("-", "_"))
@@ -46,18 +46,19 @@ data class Configuration(
         } ?: logger.warn { "Tree of unknown node $node is null" }
     }
 
-    enum class BorrowQExtensions : ConfigOption.ConfigValue {
+    enum class BorroQExtensions : ConfigOption.ConfigValue {
         ALLOWED, DISALLOWED;
 
         enum class Extension(val description: String) {
             ARRAYS("Array handling"),
             ALL_PRIMITIVES("Treat all primitive types the same as bool"),
             ANY_PARAMETER_COUNT("Allow parameter counts != 2"),
-            NESTED_FIELD_ACCESS("Accessing nested fields in code and in scopes")
+            NESTED_FIELD_ACCESS("Accessing nested fields in code and in scopes"),
+            VOID_RETURN("Treat void return types identically as returning bool")
         }
 
-        companion object : ConfigOption<BorrowQExtensions> {
-            const val KEY = "borrow-q-extensions"
+        companion object : ConfigOption<BorroQExtensions> {
+            const val KEY = "borroq_extensions"
             override val optionKey = KEY
             override val default = ALLOWED
             override fun fromString(string: String) = valueOf(string.uppercase().replace("-", "_"))
@@ -84,8 +85,8 @@ data class Configuration(
     companion object {
         fun SourceChecker.getConfig(): Configuration {
             val unknownStrictness = UnknownSyntaxStrictness.getValue(this)
-            val borrowQExtensions = BorrowQExtensions.getValue(this)
-            return Configuration(unknownStrictness, borrowQExtensions)
+            val borroQExtensions = BorroQExtensions.getValue(this)
+            return Configuration(unknownStrictness, borroQExtensions)
         }
 
     }

@@ -1,8 +1,6 @@
 package testcases.borroq.eval;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
-import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Move;
 
 public interface Array {
     class Box {
@@ -13,7 +11,7 @@ public interface Array {
         int value;
     }
 
-    default void use(@Immutable @Move Box value) {
+    default void use(@Immutable Box value) {
     }
 
     default void main() {
