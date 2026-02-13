@@ -186,10 +186,10 @@ data class BorroQStore(
         return toRemove
     }
 
-    fun removeDanglingBorrowsWithId(id: Id): List<Borrow> {
+    fun removeInactiveBorrowsWithId(id: Id): List<Borrow> {
         val toRemove = borrowList.filter { borrow -> borrow.id == id && borrowList.none { it.path.id == borrow.id } }
         borrowList.removeAll(toRemove)
-        return toRemove + if (toRemove.isNotEmpty()) removeDanglingBorrowsWithId(id) else emptyList()
+        return toRemove + if (toRemove.isNotEmpty()) removeInactiveBorrowsWithId(id) else emptyList()
     }
 
     fun removeBorrowsWithPathPrefix(path: IdPath): List<Borrow> {

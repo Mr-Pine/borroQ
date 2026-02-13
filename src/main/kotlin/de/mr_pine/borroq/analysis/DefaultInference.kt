@@ -5,7 +5,7 @@ import de.mr_pine.borroq.types.Rational
 import de.mr_pine.borroq.types.specifiers.IMutability
 import de.mr_pine.borroq.types.specifiers.IMutability.Immutable
 import de.mr_pine.borroq.types.specifiers.IMutability.Mutable
-import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.Mutability.IMMUTABLE
 import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Borrow
 import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Release
 
@@ -27,11 +27,13 @@ object DefaultInference {
 
     fun inferReturnMutability() = Immutable(null)
 
-    fun inferArrayElementIMutability() = Immutable(null)
-    fun inferArrayElementMutability() = Mutability.IMMUTABLE
+    fun inferArrayElementMutability() = IMMUTABLE
 
     fun inferParameterMutability(isConstructor: Boolean) = Immutable(null)
     fun inferParameterReleaseMode(isConstructor: Boolean) = if (isConstructor) Borrow(null) else Release(null)
 
-    fun inferTypeParameterMutability() = Immutable(null)
+    fun inferTypeParameterIMutability() = Immutable(null)
+    fun inferTypeParameterMutability() = IMMUTABLE
+
+    fun inferFieldAccessMutability() = IMMUTABLE
 }

@@ -7,7 +7,7 @@ import com.sun.tools.javac.code.Type
 import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.Messages
-import de.mr_pine.borroq.Strictness
+import de.mr_pine.borroq.analysis.Configuration.BorrowQExtensions.Extension
 import de.mr_pine.borroq.analysis.exceptions.*
 import de.mr_pine.borroq.analysis.livevariable.LiveVarNode
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
@@ -19,13 +19,14 @@ import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.ReleaseMode
 import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode
 import de.mr_pine.borroq.types.specifiers.Scope
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.UnderlyingAST
+import org.checkerframework.dataflow.cfg.block.Block
+import org.checkerframework.dataflow.cfg.block.ExceptionBlock
 import org.checkerframework.dataflow.cfg.node.*
-import org.checkerframework.dataflow.expression.FieldAccess
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
-import org.checkerframework.dataflow.expression.ValueLiteral
 import org.checkerframework.javacutil.ElementUtils
 import org.checkerframework.javacutil.TreeUtils
 import org.checkerframework.javacutil.TypesUtils
@@ -38,6 +39,8 @@ import javax.lang.model.type.TypeKind
 import javax.lang.model.type.TypeMirror
 import kotlin.contracts.ExperimentalContracts
 
+private val logger = KotlinLogging.logger { }
+
 private typealias Result = TransferResult<BorroQValue, BorroQStore>
 private typealias Input = TransferInput<BorroQValue, BorroQStore>
 
@@ -47,7 +50,7 @@ class BorroQTransfer(
     private val liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
     private val checker: BorroQChecker,
     private val annotationQuery: AnnotationQuery,
-    private val strictness: Strictness
+    private val configuration: Configuration
 ) : AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<BorroQValue, BorroQStore> {
 
     private var parameters: List<LocalVariableNode>? = null
@@ -98,7 +101,7 @@ class BorroQTransfer(
             liveness.getStoreBefore(this)?.liveVariables.liveIds() - liveness.getStoreAfter(this)?.liveVariables.liveIds()
 
         for (id in diedIds) {
-            val removedBorrows = store.removeDanglingBorrowsWithId(id)
+            val removedBorrows = store.removeInactiveBorrowsWithId(id)
             removedBorrows.filter { it.path.tail.fields.isEmpty() }.forEach {
                 store.recombineAny(Permission(it.fraction).withId(it.path.id))
             }
@@ -142,15 +145,34 @@ class BorroQTransfer(
         underlyingAST: UnderlyingAST, parameters: List<LocalVariableNode>
     ): BorroQStore {
         this.parameters = parameters.toList()
+        if (parameters.size != 2) {
+            configuration.borrowQExtensions.requireExtension(
+                Extension.ANY_PARAMETER_COUNT,
+                underlyingAST.code!!,
+                checker
+            )
+        }
 
         val parameterPermissions = parameters.zip(signatureType.parameters).mapNotNull { (parameter, parameterType) ->
-            val permission = when (parameterType?.mutability ?: return@mapNotNull null) {
-                is IMutability.Mutable -> Permission(Rational.ONE)
-                is IMutability.Immutable -> Permission(ImmutableFraction)
-            }
+            val mutability = if ((parameterType?.mutability
+                    ?: return@mapNotNull null) is IMutability.Mutable
+            ) Mutability.MUTABLE else Mutability.IMMUTABLE
+            val permission = Permission(mutability.fraction)
             val localVariable = JavaExpression.fromNode(parameter) as LocalVariable
+            val id = Id.fromNode(parameter)
+
             localVariable to (permission.withId(Id.fromNode(parameter)) as VariablePermission)
         }.toMap().toMutableMap()
+
+        fun borrowsFromScope(id: Id, scope: Scope, source: Tree): List<Borrow> {
+            if (scope.entries.any { it.fields.size > 1 }) {
+                configuration.borrowQExtensions.requireExtension(Extension.NESTED_FIELD_ACCESS, source, checker)
+            }
+            if (scope.includesBase) TODO("Base in scope")
+
+            TODO("Create borrows from scope")
+        }
+
 
         context(mutability: IMutability, paramSource: Tree)
         fun calculateBorrows(
@@ -185,13 +207,13 @@ class BorroQTransfer(
         }
 
         val parameterBorrows = parameters.zip(signatureType.parameters).flatMap { (parameter, parameterType) ->
-            if (parameterType?.mutability?.onPaths != null) context(parameterType.mutability, parameter.tree!!) {
-                val baseType = TypesUtils.getTypeElement(parameter.type)!!
-                calculateBorrows(IdPath(Id.fromNode(parameter)), baseType, parameterType.mutability.onPaths!!)
-            } else {
-                emptyList()
-            }
+            val scope = TODO("Get scope from $parameterType")
+            val id =
+                parameterPermissions.get(JavaExpression.fromNode(parameter) as LocalVariable)
+                    ?.let { (it as IdentifiedPermission).id } ?: return@flatMap emptyList()
+            borrowsFromScope(id, scope, parameter.tree!!)
         }
+        val thisBorrows = borrowsFromScope(ThisId, TODO("Get scope for this"), underlyingAST.code!!)
 
         val methodAST = underlyingAST as UnderlyingAST.CFGMethod
         val receiverPermission = when (signatureType.receiverType?.mutability) {
@@ -227,66 +249,8 @@ class BorroQTransfer(
     override fun visitNode(
         node: Node, p: Input
     ): Result {
-        val source = node.tree
-
-        if (source == null) {
-            System.err.println("Tree of node $node is null")
-        } else {
-            when (strictness) {
-                Strictness.STRICT -> checker.reportError(source, Messages.UNKNOWN_TREE_ENCOUNTERED, source.kind)
-                Strictness.WARN_UNKNOWN -> checker.reportWarning(source, Messages.UNKNOWN_TREE_ENCOUNTERED, source.kind)
-                Strictness.ALLOW_UNKNOWN -> {}
-            }
-        }
-
+        configuration.unknownSyntaxStrictness.reportUnknownSyntaxStrictness(checker, node)
         return node.regularResult(null, p.regularStore, false)
-    }
-
-    context(store: BorroQStore, temporaryBorrows: MutableList<Borrow>)
-    private fun processReceiverOrParameter(type: SignatureType.ParameterType, basePath: Path) {
-        if (basePath.isStatic) return
-
-        for (pathTail in type.mutability.onPaths ?: listOf(PathTail(emptyList()))) {
-            val path = basePath.with(pathTail)
-            context(store, store.getBorrows(), memberTypeAnalysis) {
-                val allowsRequiredMutability = if (type.mutability is IMutability.Mutable) path.asIdPath()
-                    .allowsDeepMutability() else path.asIdPath().allowsDeepReadability()
-                if (!allowsRequiredMutability) {
-                    throw InsufficientDeepPermissionException(path, type.mutability)
-                }
-            }
-        }
-
-        for ((pathTail, releaseMode) in type.releaseMode.pathsToSingleReleaseMode()
-            .filterValues { it is SingleReleaseMode.Borrow || it is SingleReleaseMode.Move }) {
-            val path = basePath.with(pathTail)
-            val fraction = when (type.mutability) {
-                is IMutability.Mutable -> Rational.ONE
-                is IMutability.Immutable -> ImmutableFraction
-            }
-            val tempBorrow = Borrow(path.asIdPath(), fraction, Borrow.Identifier.Dummy)
-            store.addBorrow(tempBorrow)
-
-            if (releaseMode is SingleReleaseMode.Borrow) temporaryBorrows.add(tempBorrow)
-        }
-    }
-
-    private fun VariablePermission?.validateMutability(tree: Tree, mutability: IMutability) = also {
-        silentExceptionReportContext(tree) {
-            when (mutability) {
-                is IMutability.Mutable -> if (!(it?.hasShallowMutability
-                        ?: false)
-                ) throw InsufficientShallowPermissionException(
-                    "this", mutability, it
-                )
-
-                is IMutability.Immutable -> if (!(it?.hasShallowReadability
-                        ?: true)
-                ) throw InsufficientShallowPermissionException(
-                    "this", mutability, it
-                )
-            }
-        }
     }
 
     data class Pseudoarg(val mutability: Mutability, val scope: Scope, val argument: BorroQValue, val argTree: Tree)
@@ -327,159 +291,59 @@ class BorroQTransfer(
         return node.regularResult(result, store, storeChanged = true)
     }
 
-    context(store: BorroQStore, tree: Tree, node: Node)
-    private fun processCallLike(
-        signature: SignatureType, receiver: Node?, arguments: List<Node>
-    ): RegularTransferResult<BorroQValue, BorroQStore> {
-        val temporaryBorrows = mutableListOf<Borrow>()
-        val receiverTree = receiver?.tree ?: tree
-        val returnPermission = signature.returnMutability?.let { Permission(it.fraction) }
-
-        try {
-            val receiverPermission = if (signature.receiverType != null) {
-                require(receiver != null) { "Receiver is null but non-null return type in signature: ${signature.receiverType}" }
-
-                val permission = exceptionReportContext(receiverTree) {
-                    when (receiver) {
-                        is ThisNode -> store.chooseAndRemoveThisReceiverPermission(signature.receiverType.mutability)
-                        else -> store.chooseAndRemoveArgumentPermission(
-                            receiver, signature.receiverType.mutability
-                        )
-                    }.validateMutability(receiverTree, signature.receiverType.mutability)
-                }
-                val receiverPath = Path.fromNode(receiver)
-                context(temporaryBorrows) {
-                    silentExceptionReportContext(receiverTree) {
-                        processReceiverOrParameter(
-                            signature.receiverType, receiverPath
-                        )
-                    }
-                }
-
-                permission
-            } else {
-                null
-            }
-
-            val argumentPermissions = arguments.zip(signature.parameters).map { (arg, type) ->
-                if (when (JavaExpression.fromNode((arg as? TypeCastNode)?.operand ?: arg)) {
-                        is LocalVariable, is ValueLiteral -> false
-                        is FieldAccess if Path.fromNode(arg).root == PathRoot.StaticPathRoot -> false
-                        else -> true
-                    }
-                ) {
-                    silentExceptionReportContext(arg.tree!!) {
-                        throw NonLocalVariableArgumentException()
-                    }
-                    return@map null
-                }
-
-                if (type == null) return@map null
-                val permission = exceptionReportContext(arg.tree!!) {
-                    store.chooseAndRemoveArgumentPermission(
-                        arg, type.mutability
-                    ).validateMutability(arg.tree!!, type.mutability)
-                }
-
-                context(temporaryBorrows) {
-                    silentExceptionReportContext(arg.tree!!) { processReceiverOrParameter(type, Path.fromNode(arg)) }
-                }
-
-                permission
-            }
-
-            /*
-             * Imaginary method execution here
-             */
-
-
-            val receiverData = if (signature.receiverType != null) listOf(
-                Triple(
-                    receiver.takeIf { it !is ThisNode }, signature.receiverType, receiverPermission!!
-                )
-            ) else emptyList()
-
-            val argumentData = arguments.zip(signature.parameters).zip(argumentPermissions).map { (p, z) ->
-                val (x, y) = p
-                Triple(x, y, z)
-            }
-
-            val freeBorrows = mutableListOf<BorroQValue.FreePermission.FreeBorrow>()
-            for ((argument, type, permission) in argumentData + receiverData) {
-                when (type?.releaseMode) {
-                    null -> {}
-                    is ReleaseMode.Mixed -> {
-                        store.recombineNodeOrThis(argument, permission!!)
-                    }
-
-                    is SingleReleaseMode if type.releaseMode.onPaths.orEmpty().isNotEmpty() -> {
-                        store.recombineNodeOrThis(argument, permission!!)
-                    }
-
-                    is SingleReleaseMode.Release -> {
-                        store.recombineNodeOrThis(argument, permission!!)
-                    }
-
-                    is SingleReleaseMode.Borrow, is SingleReleaseMode.Move -> {}
-                }
-            }
-
-            freeBorrows.run {
-                for (borrow in temporaryBorrows) {
-                    store.removeBorrow(borrow)
-                    add(BorroQValue.FreePermission.FreeBorrow(borrow.path, borrow.fraction))
-                }
-            }
-
-            val freePermission = returnPermission?.let { BorroQValue.FreePermission(it, freeBorrows) }
-
-            return node.regularResult(freePermission, store)
-        } catch (_: BorroQReportedException) {
-            return node.regularResult(
-                returnPermission?.let { BorroQValue.FreePermission(it, emptyList()) }, store
-            )
-        }
-    }
-
-
-    override fun visitMethodInvocation(
-        node: MethodInvocationNode, input: Input
+    private fun visitCallable(
+        node: Node, receiver: Node?, arguments: List<Node>, executableElement: ExecutableElement, input: Input
     ): Result {
-        require(!input.containsTwoStores()) { "Method invocation node $node has two stores" }
+        require(!input.containsTwoStores()) { "Callable invocation node $node has two stores" }
 
-        val methodType = memberTypeAnalysis.getType(node.target, exceptionReportingContext = { block ->
+        val methodType = memberTypeAnalysis.getType(executableElement, exceptionReportingContext = { block ->
             try {
                 exceptionReportContext(node.tree!!, block)
             } catch (_: BorroQReportedException) {
             }
         })
 
-        if (node.target.method.isConstructor && methodType.returnMutability is IMutability.Immutable && signatureType.returnMutability is IMutability.Mutable) silentExceptionReportContext(
+        if (executableElement.isConstructor && methodType.returnMutability is IMutability.Immutable && signatureType.returnMutability is IMutability.Mutable) silentExceptionReportContext(
             node.tree!!
         ) {
             throw IncompatibleSuperConstructorMutability()
         }
 
-        val returnMutability = TODO("Only old mutability ${methodType.returnMutability} currently :(")
+        val returnMutability =
+            if (methodType.returnMutability is IMutability.Mutable) Mutability.MUTABLE else Mutability.IMMUTABLE
 
         val receiverArg = methodType.receiverType?.let { receiverType ->
-            val argMutability = TODO("Only old mutability of ${receiverType.mutability}")
+            val argMutability =
+                if (receiverType.mutability is IMutability.Mutable) Mutability.MUTABLE else Mutability.IMMUTABLE
             val scope = TODO("Need scope for ${receiverType}")
-            val receiver = input.getValueOfSubNode(node.target.receiver)
-            Pseudoarg(argMutability, scope, receiver!!, node.target.receiver.tree ?: node.tree!!)
+            val receiverValue = input.getValueOfSubNode(receiver)!!
+            Pseudoarg(argMutability, scope, receiverValue, receiver!!.tree ?: node.tree!!)
         }
-        val arguments = listOfNotNull(receiverArg) + node.arguments.zip(methodType.parameters)
+        val arguments = listOfNotNull(receiverArg) + arguments.zip(methodType.parameters)
             .filterIsInstance<Pair<Node, SignatureType.ParameterType>>().map { (arg, paramType) ->
-                val argMutability = TODO("Only old mutability of ${paramType?.mutability}")
+                val argMutability =
+                    if (paramType.mutability is IMutability.Mutable) Mutability.MUTABLE else Mutability.IMMUTABLE
                 val scope = TODO("Need scope for ${paramType}")
                 Pseudoarg(argMutability, scope, input.getValueOfSubNode(arg)!!, arg.tree!!)
             }
 
         val pseudocall = Pseudocall(returnMutability, arguments)
 
-        return context(input.regularStore, node.target.tree!!, node) {
+        return context(input.regularStore, node.tree!!, node) {
             processPseudocall(pseudocall)
         }
+    }
+
+    override fun visitMethodInvocation(
+        node: MethodInvocationNode, input: Input
+    ): Result = visitCallable(node, node.target.receiver, node.arguments, node.target.method, input)
+
+
+    override fun visitObjectCreation(
+        node: ObjectCreationNode, input: Input
+    ): Result {
+        val constructorElement: ExecutableElement = TreeUtils.elementFromUse(node.tree!!)
+        return visitCallable(node, null, node.arguments, constructorElement, input)
     }
 
     //region assignment
@@ -662,10 +526,10 @@ class BorroQTransfer(
     fun validateTypeParameters(targetType: TypeMirror, valueType: TypeMirror, topLevel: Boolean) {
         val targetMutability =
             IMutability.fromAnnotationsOnType(targetType.annotationMirrors, TypesUtils.getTypeElement(targetType))
-                ?: DefaultInference.inferTypeParameterMutability()
+                ?: DefaultInference.inferTypeParameterIMutability()
         val valueMutability =
             IMutability.fromAnnotationsOnType(valueType.annotationMirrors, TypesUtils.getTypeElement(valueType))
-                ?: DefaultInference.inferTypeParameterMutability()
+                ?: DefaultInference.inferTypeParameterIMutability()
 
         if (!topLevel && targetMutability is IMutability.Mutable && valueMutability is IMutability.Immutable) {
             throw IncompatibleTypeParameterMutabilities(targetType)
@@ -704,31 +568,53 @@ class BorroQTransfer(
     }
     //endregion
 
+    //region field access
+    private fun inferFieldAccessMutabilityInBlock(node: FieldAccessNode, block: Block): Mutability {
+        if (block is ExceptionBlock) inferFieldAccessMutabilityInBlock(node, block.successor!!)
+
+        for (usageNode in block.nodes) {
+            if (usageNode.operands.contains(node)) when (usageNode) {
+                is ReturnNode -> if (signatureType.returnMutability is IMutability.Mutable) return Mutability.MUTABLE
+                else -> TODO("Infer mutability from ${usageNode}")
+            }
+        }
+
+        logger.warn { "Could not infer mutability for field access. Falling back to default." }
+        return DefaultInference.inferFieldAccessMutability()
+    }
+
+    private fun inferFieldAccessMutability(node: FieldAccessNode): Mutability =
+        inferFieldAccessMutabilityInBlock(node, node.block!!)
+
+    private fun extractFieldPath(node: FieldAccessNode): Pair<Node, PathTail> = when (val receiver = node.receiver) {
+        is FieldAccessNode -> {
+            val (base, path) = extractFieldPath(node)
+            base to path.with(node.element)
+        }
+
+        is LocalVariableNode, is ThisNode -> receiver to PathTail(node.element)
+
+        else -> TODO("Extract field path for $receiver")
+    }
+
     override fun visitFieldAccess(
         node: FieldAccessNode, input: Input
     ): Result {
         require(!input.containsTwoStores()) { "Field access node $node has two stores" }
 
-        val fieldPermission = memberTypeAnalysis.getFieldMutability(node.element)
-            .let { if (it is IMutability.Mutable) Permission(Rational.ONE) else Permission(ImmutableFraction) } // TODO: Correctly handle restrictions
+        val (base, pathTail) = extractFieldPath(node)
 
-        val receiverPath = when (node.receiver) {
-            is FieldAccessNode -> {
-                val receiverValue = input.getValueOfSubNode(node.receiver) as BorroQValue.FieldAccess
-                receiverValue.access
-            }
+        val targetMutability = inferFieldAccessMutability(node)
+        val receiverArg = Pseudoarg(
+            targetMutability, Scope(false, listOf(pathTail)), input.getValueOfSubNode(base)!!, node.tree!!
+        )
+        val pseudocall = Pseudocall(targetMutability, listOf(receiverArg))
 
-            is ThisNode -> Path(PathRoot.ThisPathRoot)
-            is LocalVariableNode -> Path(PathRoot.LocalVariableRoot(JavaExpression.fromNode(node.receiver) as LocalVariable))
-
-            is ClassNameNode -> Path(PathRoot.StaticPathRoot)
-            else -> throw IllegalStateException("Unexpected receiver type ${node.receiver} ${node.receiver.javaClass}")
+        return context(input.regularStore, node.tree!!, node) {
+            processPseudocall(pseudocall)
         }
-
-        val path = receiverPath.with(node.element)
-
-        return node.regularResult(BorroQValue.FieldAccess(path, fieldPermission), input.regularStore, false)
     }
+    //endregion
 
     override fun visitLocalVariable(
         node: LocalVariableNode, input: Input
@@ -744,17 +630,6 @@ class BorroQTransfer(
         require(!input.containsTwoStores()) { "Local variable node $node has two stores" }
         val permission = input.regularStore.queryThisPermission()
         return node.regularResult(permission, input.regularStore, false)
-    }
-
-    override fun visitObjectCreation(
-        node: ObjectCreationNode, input: Input
-    ): Result {
-        val constructorElement: ExecutableElement = TreeUtils.elementFromUse(node.tree!!)
-        val signature = memberTypeAnalysis.getType(constructorElement) {
-            silentExceptionReportContext(node.tree!!) { it() }
-        }
-
-        return context(input.regularStore, node.tree!!, node) { processCallLike(signature, node, node.arguments) }
     }
 
     //region return/exit
@@ -874,6 +749,9 @@ class BorroQTransfer(
     }
 
     override fun visitValueLiteral(node: ValueLiteralNode, p: Input): Result {
+        if (node.type.kind != TypeKind.BOOLEAN) {
+            configuration.borrowQExtensions.requireExtension(Extension.ALL_PRIMITIVES, node, checker)
+        }
         return node.regularResult(
             null, p.regularStore
         )
@@ -881,6 +759,8 @@ class BorroQTransfer(
 
     // region array stuff
     override fun visitArrayCreation(node: ArrayCreationNode, input: Input): Result {
+        configuration.borrowQExtensions.requireExtension(Extension.ARRAYS, node, checker)
+
         val elementType = (node.type as Type.ArrayType).elemtype
 
         val pseudoargs = if (elementType.isPrimitive) {
@@ -901,23 +781,26 @@ class BorroQTransfer(
     }
 
     override fun visitArrayAccess(
-        node: ArrayAccessNode, p: Input
+        node: ArrayAccessNode, input: Input
     ): Result {
+        configuration.borrowQExtensions.requireExtension(Extension.ARRAYS, node, checker)
+
         val componentMutability = node.array.annotatedType.let { it as ArrayType }.componentType.let {
-            IMutability.fromAnnotationsOnType(
+            Mutability.fromAnnotationsOnType(
                 it.annotationMirrors, TypesUtils.getTypeElement(it)
             )
         } ?: DefaultInference.inferTypeParameterMutability()
 
-        val syntheticSignatureType = SignatureType(
-            componentMutability, SignatureType.ParameterType(
-                IMutability.Immutable(null), SingleReleaseMode.Borrow(null)
-            ), listOf(null)
+        val arrayScope = TODO()
+        val arrayPseudoarg =
+            Pseudoarg(Mutability.IMMUTABLE, arrayScope, input.getValueOfSubNode(node.array)!!, node.array.tree!!)
+        val indexPseudoarg = Pseudoarg(
+            Mutability.IMMUTABLE, Scope(false, emptyList()), input.getValueOfSubNode(node.index)!!, node.index.tree!!
         )
-        return context(p.regularStore, node.tree!!, node) {
-            processCallLike(
-                syntheticSignatureType, node.array, listOf(node.index)
-            )
+        val pseudocall = Pseudocall(componentMutability, listOf(arrayPseudoarg, indexPseudoarg))
+
+        return context(input.regularStore, node.tree!!, node) {
+            processPseudocall(pseudocall)
         }
     }
 

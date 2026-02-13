@@ -24,8 +24,12 @@ sealed interface PathRoot {
 
 @JvmInline
 value class PathTail(val fields: List<VariableElement>) {
+    constructor(vararg fields: VariableElement) : this(fields.toList())
+
     fun isPrefixOf(other: PathTail) = fields.size <= other.fields.size && fields.zip(other.fields)
         .all { (a, b) -> a == b }
+
+    fun with(element: VariableElement) = PathTail(fields + element)
 
     companion object {
         fun checkForConflicts(paths: List<PathTail>) {

@@ -18,7 +18,7 @@ import org.checkerframework.framework.source.SourceVisitor
 import org.checkerframework.javacutil.UserError
 
 class BorroQVisitor(
-    val checker: BorroQChecker, val strictness: Strictness, val annotationQuery: AnnotationQuery = AnnotationQuery(
+    val checker: BorroQChecker, val configuration: Configuration, val annotationQuery: AnnotationQuery = AnnotationQuery(
         checker
     )
 ) : SourceVisitor<Unit, Unit>(checker) {
@@ -63,7 +63,7 @@ class BorroQVisitor(
             livenessResult,
             checker,
             annotationQuery,
-            strictness
+            configuration
         )
 
         val analysis = MethodAnalysis(
