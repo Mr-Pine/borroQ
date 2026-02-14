@@ -1,5 +1,6 @@
 package de.mr_pine.borroq.types
 
+import de.mr_pine.borroq.types.specifiers.ArgPermission
 import org.checkerframework.dataflow.analysis.AbstractValue
 
 sealed interface BorroQValue : AbstractValue<BorroQValue> {
@@ -7,24 +8,24 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
         TODO("Not yet implemented")
     }
 
-    val hasShallowMutability: Boolean
-        get() = false
-    val hasShallowReadability: Boolean
-        get() = false
+    fun hasShallowPermission(permission: ArgPermission) = when (permission) {
+        ArgPermission.MUTABLE -> false
+        ArgPermission.READABLE -> false
+    }
 
-    data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
+    data class PseudocallResult(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
         init {
             if (attachedBorrows.isNotEmpty()) {
                 System.err.println("Warning: FreePermission has attached borrows")
             }
         }
 
-        override val hasShallowMutability: Boolean
-            get() = permission.fraction == Rational.ONE
-        override val hasShallowReadability: Boolean
-            get() = permission.fraction > Rational.ZERO
+        override fun hasShallowPermission(permission: ArgPermission) = when (permission) {
+            ArgPermission.MUTABLE -> this.permission.fraction == Rational.ONE
+            ArgPermission.READABLE -> this.permission.fraction > Rational.ZERO
+        }
 
-        data class FreeBorrow(val path: IdPath, val fraction: Rational) {
+        data class FreeBorrow(val path: Path, val fraction: Rational) {
             fun toBorrow(id: Borrow.Identifier) = Borrow(path, fraction, id)
         }
     }
@@ -32,7 +33,9 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
     data class FieldAccess(val access: Path, val fieldPermission: Permission) : BorroQValue
 
     data object Primitive : BorroQValue {
-        override val hasShallowMutability: Boolean get() = false
-        override val hasShallowReadability: Boolean get() = true
+        override fun hasShallowPermission(permission: ArgPermission) = when (permission) {
+            ArgPermission.MUTABLE -> false
+            ArgPermission.READABLE -> true
+        }
     }
 }

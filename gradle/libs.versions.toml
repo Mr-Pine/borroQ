@@ -4,16 +4,19 @@ dokka = "2.1.0"
 eisop = "3.49.3-eisop1"
 plumelib = "1.11.0"
 logging = "7.0.3"
+slf4j = "2.0.17"
 
 [libraries]
 checker = { group = "io.github.eisop", name = "checker", version.ref = "eisop" }
 checker-qual = { group = "io.github.eisop", name = "checker-qual", version.ref = "eisop" }
 
-plumelib-util = {group = "org.plumelib", name = "plume-util", version.ref = "plumelib"}
+plumelib-util = { group = "org.plumelib", name = "plume-util", version.ref = "plumelib" }
 
 eisop-test = { group = "io.github.eisop", name = "framework-test", version.ref = "eisop" }
 
-logging = {group = "io.github.oshai", name = "kotlin-logging-jvm", version.ref = "logging"}
+logging = { group = "io.github.oshai", name = "kotlin-logging-jvm", version.ref = "logging" }
+
+slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 
 [bundles]
 checker = ["checker", "checker-qual"]

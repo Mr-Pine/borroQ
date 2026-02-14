@@ -2,6 +2,7 @@ package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.analysis.BorroQStore
 import de.mr_pine.borroq.analysis.exceptions.ConflictingPathRestrictionsException
+import de.mr_pine.borroq.analysis.transfer.BorroQTransfer.Companion.ThisId
 import org.checkerframework.dataflow.cfg.node.*
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
@@ -12,13 +13,13 @@ sealed interface PathRoot {
     data object StaticPathRoot : PathRoot
 
     @JvmInline
-    value class LocalVariableRoot(val variable: LocalVariable) : PathRoot
+    value class IdPathRoot(val id: Id) : PathRoot
 
     context(store: BorroQStore)
     fun toId() = when (this) {
-        is ThisPathRoot -> (store.queryThisPermission() as IdentifiedPermission).id
+        is ThisPathRoot -> ThisId
         is StaticPathRoot -> throw IllegalStateException("Static path root cannot be converted to id")
-        is LocalVariableRoot -> (store.queryPermission(variable) as IdentifiedPermission).id
+        is IdPathRoot -> this.id
     }
 }
 
@@ -44,9 +45,6 @@ value class PathTail(val fields: List<VariableElement>) {
 data class Path(val root: PathRoot, val tail: PathTail) {
     constructor(root: PathRoot) : this(root, PathTail(emptyList()))
 
-    context(store: BorroQStore)
-    fun asIdPath() = IdPath(root.toId(), tail)
-
     fun with(field: VariableElement) = Path(root, PathTail(tail.fields + field))
     fun with(tail: PathTail) = Path(root, PathTail(this.tail.fields + tail.fields))
 
@@ -56,7 +54,8 @@ data class Path(val root: PathRoot, val tail: PathTail) {
         fun fromNode(node: Node): Path = when (node) {
             is LocalVariableNode -> {
                 val variable = JavaExpression.fromNode(node) as LocalVariable
-                Path(PathRoot.LocalVariableRoot(variable))
+                TODO()
+                //Path(PathRoot.LocalVariableRoot(variable))
             }
 
             is ThisNode -> Path(PathRoot.ThisPathRoot)
@@ -70,14 +69,4 @@ data class Path(val root: PathRoot, val tail: PathTail) {
             else -> throw IllegalStateException("Unexpected node type ${node.javaClass}")
         }
     }
-}
-
-data class IdPath(val id: Id, val tail: PathTail) {
-    constructor(id: Id) : this(id, PathTail(emptyList()))
-
-    fun isPrefixOf(other: IdPath) =
-        id == other.id && tail.isPrefixOf(other.tail)
-
-    fun with(field: VariableElement) = IdPath(id, PathTail(tail.fields + field))
-    fun with(tail: PathTail) = IdPath(id, PathTail(this.tail.fields + tail.fields))
 }

@@ -1,7 +1,7 @@
 package de.mr_pine.borroq.types
 
-data class Borrow(val path: IdPath, val fraction: Rational, val id: Identifier) {
+data class Borrow(val source: Path, val fraction: Rational, val target: Identifier) {
     sealed interface Identifier {
-        data object Dummy: Identifier
+        data object Dummy : Identifier
     }
 }

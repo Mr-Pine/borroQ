@@ -1,16 +1,24 @@
 package de.mr_pine.borroq.analysis
 
+import de.mr_pine.borroq.analysis.exceptions.InsufficientDeepPermissionException
+import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionException
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
+import de.mr_pine.borroq.types.specifiers.ArgPermission
+import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.Scope
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.checkerframework.dataflow.analysis.Store
+import org.checkerframework.dataflow.cfg.node.LocalVariableNode
 import org.checkerframework.dataflow.cfg.node.Node
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer
 import org.checkerframework.dataflow.expression.FieldAccess
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
 import org.checkerframework.dataflow.expression.ThisReference
-import kotlin.random.Random
-import kotlin.random.nextInt
+import javax.lang.model.util.Elements
+
+private val logger = KotlinLogging.logger { }
 
 /**
  * Stores the permissions of local variables and the this receiver as well as the borrow list.
@@ -19,16 +27,18 @@ import kotlin.random.nextInt
  * @param borrowList A list of borrows.
  */
 data class BorroQStore(
+    private val configuration: Configuration,
     private val variablePermissions: MutableMap<LocalVariable, VariablePermission>,
     private var thisPermission: VariablePermission?,
     private val borrowList: MutableList<Borrow>
 ) : Store<BorroQStore> {
 
-    override fun copy() = BorroQStore(variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
+    override fun copy() =
+        BorroQStore(configuration, variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
 
-    fun createFreshId(variable: LocalVariable): Id {
-        val name = variable.element.simpleName.toString()
-        val nonce = Random.nextInt(0..Int.MAX_VALUE)
+    fun createFreshId(variableNode: LocalVariableNode): Id {
+        val name = variableNode.name.toString()
+        val nonce = variableNode.hashCode()
 
         return Id(name, nonce)
     }
@@ -95,8 +105,7 @@ data class BorroQStore(
                 val id = permission.id
                 val otherVariables =
                     variablePermissions.entries.filterIsInstance<Map.Entry<LocalVariable, IdentifiedPermission>>()
-                        .filter { (key, _) -> key != expression }
-                        .filter { (_, value) -> value.id == id }
+                        .filter { (key, _) -> key != expression }.filter { (_, value) -> value.id == id }
                         .map(Map.Entry<LocalVariable, IdentifiedPermission>::key)
                 val otherVariable = otherVariables.firstOrNull() ?: return
                 variablePermissions[expression] = Permission(Rational.ZERO).withId(id)
@@ -133,34 +142,90 @@ data class BorroQStore(
         borrowList.add(borrow)
     }
 
-    fun removeBorrowsWithId(id: Id): List<Borrow> {
-        val toRemove = borrowList.filter { it.id == id }
-        borrowList.removeAll(toRemove)
-        return toRemove
+    fun deleteInactiveBorrows(liveIds: Set<Id>) {
+        val deadIds = borrowList.map { it.target }.filterIsInstance<Id>().filter { it !in liveIds }
+        val activityGuards = deadIds.associateWith { id ->
+            borrowList.filter { it.source.root == PathRoot.IdPathRoot(id) }.toMutableList()
+        }
+        val inactiveIds = activityGuards.filterValues { it.isEmpty() }.keys.toMutableList()
+        while (inactiveIds.isNotEmpty()) {
+            val id = inactiveIds.removeAt(0)
+            val borrowsToRemove = borrowList.filter { it.target == id }
+            borrowList.removeAll(borrowsToRemove)
+            val modifiedIds =
+                borrowsToRemove.map { it.source.root }.filterIsInstance<PathRoot.IdPathRoot>().map { it.id }
+            for (modifiedId in modifiedIds) {
+                activityGuards[modifiedId]?.removeIf { it.target == id }
+                if (activityGuards[modifiedId]?.isEmpty() == true) inactiveIds.add(modifiedId)
+            }
+        }
     }
 
-    fun removeInactiveBorrowsWithId(id: Id): List<Borrow> {
-        val toRemove = borrowList.filter { borrow -> borrow.id == id && borrowList.none { it.path.id == borrow.id } }
-        borrowList.removeAll(toRemove)
-        return toRemove + if (toRemove.isNotEmpty()) removeInactiveBorrowsWithId(id) else emptyList()
+    fun ensureDeepPermission(
+        permission: ArgPermission, value: BorroQValue,
+        node: Node,
+        elements: Elements,
+        memberTypeAnalysis: MemberTypeAnalysis
+    ) {
+        val fullScope = Scope.full(node.type, elements)
+        ensurePermissionOn(permission, value, node, fullScope, memberTypeAnalysis)
     }
 
-    fun removeBorrowsWithPathPrefix(path: IdPath): List<Borrow> {
-        val toRemove = borrowList.filter { path.isPrefixOf(it.path) }
-        borrowList.removeAll(toRemove)
-        return toRemove
+    fun ensurePermissionOn(
+        permission: ArgPermission,
+        value: BorroQValue,
+        node: Node,
+        scope: Scope,
+        memberTypeAnalysis: MemberTypeAnalysis
+    ) {
+        if (!value.hasShallowPermission(permission)) {
+            throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
+        }
+
+        if (value !is IdentifiedPermission) {
+            logger.warn { "Non-identified permission given to ensureIsReadableOn: $value. Treating as deep readable. Ensure that it should be deep readable." }
+            return
+        }
+
+        val id = value.id
+        for (scopeTail in scope.entries) {
+            if (!isReadable(id, scopeTail, memberTypeAnalysis)) {
+                throw InsufficientDeepPermissionException(scopeTail, permission)
+            }
+        }
     }
 
-    fun hasDeepReadability(permission: IdentifiedPermission): Boolean {
-        TODO()
+    private fun isReadable(id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis): Boolean {
+        val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.drop(1).map { fields.take(it) } }
+        return pathTailPrefixes.all { fields ->
+            val borrowSource = Path(PathRoot.IdPathRoot(id), PathTail(fields))
+            val borrows = borrowList.filter { it.source == borrowSource }
+            val borrowedFraction = borrows.map { it.fraction }.fold(Rational.ZERO, Rational::plus)
+            val maximumFraction = (memberTypeAnalysis.getFieldMutability(fields.last())
+                ?: DefaultInference.inferFieldMutability()).fraction
+            borrowedFraction < maximumFraction
+        }
     }
 
-    fun hasDeepMutability(permission: IdentifiedPermission): Boolean {
-        TODO()
+    private fun isMutable(id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis): Boolean {
+        val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.drop(1).map { fields.take(it) } }
+        return pathTailPrefixes.all { fields ->
+            val borrowSource = Path(PathRoot.IdPathRoot(id), PathTail(fields))
+            val borrows = borrowList.filter { it.source == borrowSource }
+            val borrowedFraction = borrows.map { it.fraction }.fold(Rational.ZERO, Rational::plus)
+
+            val fieldMutability =
+                memberTypeAnalysis.getFieldMutability(fields.last()) ?: DefaultInference.inferFieldMutability()
+
+            if (fieldMutability == Mutability.MUTABLE) {
+                borrowedFraction == Rational.ZERO
+            } else {
+                borrowedFraction < fieldMutability.fraction
+            }
+        }
     }
 
-    override fun leastUpperBound(other: BorroQStore?): BorroQStore {
-        other!!
+    override fun leastUpperBound(other: BorroQStore): BorroQStore {
         val combinedLocalPermissions = variablePermissions.keys.union(other.variablePermissions.keys).associateWith {
             val permissionA = variablePermissions[it] ?: VariablePermission.Top // TODO: Can we just ignore them?
             val permissionB = variablePermissions[it] ?: VariablePermission.Top
@@ -170,9 +235,14 @@ data class BorroQStore(
         val combinedThisPermission = other.thisPermission?.let { otherThis -> thisPermission?.combine(otherThis) }
 
         val borrows =
-            (borrowList + other.borrowList).groupBy { it.path to it.id }.values.map { it.maxBy { it.fraction } }
+            (borrowList + other.borrowList).groupBy { it.source to it.target }.values.map { it.maxBy { it.fraction } }
 
-        return BorroQStore(combinedLocalPermissions.toMutableMap(), combinedThisPermission, borrows.toMutableList())
+        return BorroQStore(
+            configuration,
+            combinedLocalPermissions.toMutableMap(),
+            combinedThisPermission,
+            borrows.toMutableList()
+        )
     }
 
     override fun widenedUpperBound(previous: BorroQStore?): BorroQStore {

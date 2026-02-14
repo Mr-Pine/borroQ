@@ -7,8 +7,6 @@ import de.mr_pine.borroq.analysis.livevariable.LiveVarNode
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.BorroQValue
 import de.mr_pine.borroq.types.IdentifiedPermission
-import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
-import de.mr_pine.borroq.types.Permission
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.node.*
 
@@ -44,15 +42,9 @@ abstract class BorroQNoopTransfer(
         fun Set<LiveVarNode>?.liveIds() =
             liveVariables().mapNotNull { store.queryPermission(it) as IdentifiedPermission? }.map { it.id }.toSet()
 
-        val diedIds =
-            liveness.getStoreBefore(this)?.liveVariables.liveIds() - liveness.getStoreAfter(this)?.liveVariables.liveIds()
+        val liveIds = liveness.getStoreAfter(this)?.liveVariables.liveIds()
 
-        for (id in diedIds) {
-            val removedBorrows = store.removeInactiveBorrowsWithId(id)
-            removedBorrows.filter { it.path.tail.fields.isEmpty() }.forEach {
-                store.recombineAny(Permission(it.fraction).withId(it.path.id))
-            }
-        }
+        store.deleteInactiveBorrows(liveIds)
 
         return RegularTransferResult(value, store, storeChanged)
     }
@@ -131,12 +123,6 @@ abstract class BorroQNoopTransfer(
 
     override fun visitMethodAccess(
         n: MethodAccessNode, p: Input
-    ): Result {
-        return doNothing(n, p)
-    }
-
-    override fun visitClassName(
-        n: ClassNameNode, p: Input
     ): Result {
         return doNothing(n, p)
     }

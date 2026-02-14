@@ -1,15 +1,22 @@
 package de.mr_pine.borroq.types
 
-import de.mr_pine.borroq.types.specifiers.IMutability
+import de.mr_pine.borroq.types.specifiers.ArgPermission
+import de.mr_pine.borroq.types.specifiers.Mutability
 
 class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction), VariablePermission {
 
-    override val hasShallowMutability: Boolean = fraction == Rational.ONE
-    override val hasShallowReadability: Boolean = !fraction.isZero()
+    override fun hasShallowPermission(permission: ArgPermission) = when (permission) {
+        ArgPermission.READABLE -> fraction > Rational.ZERO
+        ArgPermission.MUTABLE -> fraction == Rational.ONE
+    }
 
-    override fun split(hint: IMutability): Pair<IdentifiedPermission, IdentifiedPermission> {
-        val (a, b) = super.split(hint)
-        return a.withId(id) to b.withId(id)
+    fun split(leftShallowMutability: Mutability): Pair<IdentifiedPermission, IdentifiedPermission> {
+        return if (leftShallowMutability == Mutability.MUTABLE) {
+            IdentifiedPermission(Rational.ONE, id) to IdentifiedPermission(Rational.ZERO, id)
+        } else {
+            val half = fraction / 2
+            IdentifiedPermission(half, id) to IdentifiedPermission(fraction - half, id)
+        }
     }
 
     fun maxFractional(other: IdentifiedPermission) =
