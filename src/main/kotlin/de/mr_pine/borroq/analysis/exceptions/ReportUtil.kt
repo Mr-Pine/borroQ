@@ -16,7 +16,7 @@ fun Path.display(): String {
 fun PathRoot.display() = when (this) {
     is PathRoot.IdPathRoot -> id.toString()
     PathRoot.ThisPathRoot -> "this"
-    PathRoot.StaticPathRoot -> "<static class reference>"
+    is PathRoot.StaticPathRoot -> className.toString()
 }
 
 fun Borrow.Identifier.display() = when (this) {

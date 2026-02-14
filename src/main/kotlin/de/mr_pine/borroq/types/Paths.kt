@@ -10,7 +10,7 @@ import javax.lang.model.element.VariableElement
 
 sealed interface PathRoot {
     data object ThisPathRoot : PathRoot
-    data object StaticPathRoot : PathRoot
+    data class StaticPathRoot(val className: ClassNameNode) : PathRoot
 
     @JvmInline
     value class IdPathRoot(val id: Id) : PathRoot
@@ -64,7 +64,7 @@ data class Path(val root: PathRoot, val tail: PathTail) {
                 basePath.with(node.element)
             }
 
-            is ClassNameNode -> Path(PathRoot.StaticPathRoot)
+            is ClassNameNode -> TODO() // Path(PathRoot.StaticPathRoot)
 
             else -> throw IllegalStateException("Unexpected node type ${node.javaClass}")
         }

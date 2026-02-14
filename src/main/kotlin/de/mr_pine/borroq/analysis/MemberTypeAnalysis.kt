@@ -163,7 +163,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val fieldMutability = fieldCache.getOrPut(field) {
             val annotations = field.asType().annotationMirrors
             Mutability.fromAnnotations(annotations)
-                ?: throw IllegalStateException("No mutability for field ${field.simpleName} specified")
+                ?: DefaultInference.inferFieldMutability()
         }
         if (field.modifiers.contains(Modifier.STATIC)) {
             require(fieldMutability == Mutability.IMMUTABLE) { "Static field ${field.simpleName} must be immutable" }

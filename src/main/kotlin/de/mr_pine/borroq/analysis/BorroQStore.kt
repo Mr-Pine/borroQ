@@ -1,5 +1,7 @@
 package de.mr_pine.borroq.analysis
 
+import de.mr_pine.borroq.BorroQChecker
+import de.mr_pine.borroq.analysis.Configuration.BorroQExtensions.Extension
 import de.mr_pine.borroq.analysis.exceptions.InsufficientDeepPermissionException
 import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionException
 import de.mr_pine.borroq.types.*
@@ -27,6 +29,7 @@ private val logger = KotlinLogging.logger { }
  * @param borrowList A list of borrows.
  */
 data class BorroQStore(
+    private val checker: BorroQChecker,
     private val configuration: Configuration,
     private val variablePermissions: MutableMap<LocalVariable, VariablePermission>,
     private var thisPermission: VariablePermission?,
@@ -34,7 +37,13 @@ data class BorroQStore(
 ) : Store<BorroQStore> {
 
     override fun copy() =
-        BorroQStore(configuration, variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList())
+        BorroQStore(
+            checker,
+            configuration,
+            variablePermissions.toMutableMap(),
+            thisPermission,
+            borrowList.toMutableList()
+        )
 
     fun createFreshId(variableNode: LocalVariableNode): Id {
         val name = variableNode.name.toString()
@@ -183,24 +192,32 @@ data class BorroQStore(
         }
 
         if (value !is IdentifiedPermission) {
-            logger.warn { "Non-identified permission given to ensureIsReadableOn: $value. Treating as deep readable. Ensure that it should be deep readable." }
+            configuration.borroQExtensions.requireExtension(Extension.NESTED_FIELD_ACCESS, node.tree!!, checker)
+            logger.warn { "Non-identified permission given to ensureIsReadableOn: $value. Treating as deep readable. Ensure that it should be deep $permission." }
             return
         }
 
         val id = value.id
+        val check = when (permission) {
+            ArgPermission.READABLE -> ::isReadable
+            ArgPermission.MUTABLE -> ::isMutable
+        }
         for (scopeTail in scope.entries) {
-            if (!isReadable(id, scopeTail, memberTypeAnalysis)) {
+            if (!check(id, scopeTail, memberTypeAnalysis)) {
                 throw InsufficientDeepPermissionException(scopeTail, permission)
             }
         }
     }
 
+    fun borrowedFraction(root: PathRoot, pathTail: PathTail): Rational {
+        val borrowSource = Path(root, pathTail)
+        return borrowList.filter { it.source == borrowSource }.map { it.fraction }.fold(Rational.ZERO, Rational::plus)
+    }
+
     private fun isReadable(id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis): Boolean {
         val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.drop(1).map { fields.take(it) } }
         return pathTailPrefixes.all { fields ->
-            val borrowSource = Path(PathRoot.IdPathRoot(id), PathTail(fields))
-            val borrows = borrowList.filter { it.source == borrowSource }
-            val borrowedFraction = borrows.map { it.fraction }.fold(Rational.ZERO, Rational::plus)
+            val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields))
             val maximumFraction = (memberTypeAnalysis.getFieldMutability(fields.last())
                 ?: DefaultInference.inferFieldMutability()).fraction
             borrowedFraction < maximumFraction
@@ -210,9 +227,7 @@ data class BorroQStore(
     private fun isMutable(id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis): Boolean {
         val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.drop(1).map { fields.take(it) } }
         return pathTailPrefixes.all { fields ->
-            val borrowSource = Path(PathRoot.IdPathRoot(id), PathTail(fields))
-            val borrows = borrowList.filter { it.source == borrowSource }
-            val borrowedFraction = borrows.map { it.fraction }.fold(Rational.ZERO, Rational::plus)
+            val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields))
 
             val fieldMutability =
                 memberTypeAnalysis.getFieldMutability(fields.last()) ?: DefaultInference.inferFieldMutability()
@@ -238,6 +253,7 @@ data class BorroQStore(
             (borrowList + other.borrowList).groupBy { it.source to it.target }.values.map { it.maxBy { it.fraction } }
 
         return BorroQStore(
+            checker,
             configuration,
             combinedLocalPermissions.toMutableMap(),
             combinedThisPermission,

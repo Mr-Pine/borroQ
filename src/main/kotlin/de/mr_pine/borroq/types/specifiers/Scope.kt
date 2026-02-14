@@ -81,11 +81,11 @@ data class Scope(val includesBase: Boolean, val entries: List<PathTail>) {
         ): Scope {
             val scopeAnnotation =
                 AnnotationUtils.getAnnotationByClass(annotations, de.mr_pine.borroq.qual.Scope::class.java)
-                    ?: return full(type!!, elements)
+                    ?: return full(type, elements)
 
             val pathTails = pathsFromAnnotationValueOnType(scopeAnnotation, type)
 
-            return Scope(true, pathTails)
+            return Scope(false, pathTails)
         }
     }
 }

@@ -20,8 +20,6 @@ object DefaultInference {
 
     fun inferFieldMutability() = IMMUTABLE
 
-    fun inferConstructorReturnMutability() = MUTABLE
-
     fun inferReceiverMutability() = IMMUTABLE
 
     fun inferReturnMutability(isConstructor: Boolean) = if (isConstructor) MUTABLE else IMMUTABLE
@@ -34,5 +32,5 @@ object DefaultInference {
 
     fun inferFieldAccessMutability() = IMMUTABLE
 
-    fun inferDefaultScope(type: TypeMirror, elements: Elements) = Scope.full(type, elements)
+    fun inferDefaultScope(type: TypeMirror, elements: Elements) = Scope(true, emptyList())//Scope.full(type, elements)
 }

@@ -140,7 +140,11 @@ class BorroQTransfer(
         val thisPermission = thisFraction?.let { IdentifiedPermission(it, ThisId) }
 
         return BorroQStore(
-            configuration, parameterPermissions, thisPermission, (parameterBorrows + thisBorrows).toMutableList()
+            checker,
+            configuration,
+            parameterPermissions,
+            thisPermission,
+            (parameterBorrows + thisBorrows).toMutableList()
         )
     }
 
@@ -151,17 +155,67 @@ class BorroQTransfer(
         return node.regularResult(null, p.regularStore, false)
     }
 
-    data class Pseudoarg(val mutability: Mutability, val scope: Scope, val argument: BorroQValue, val argTree: Tree)
+    data class Pseudoarg(
+        val mutability: Mutability,
+        val scope: Scope,
+        val borrowTarget: BorrowTarget,
+        val argument: BorroQValue,
+        val node: Node
+    ) {
+        enum class BorrowTarget {
+            PERSISTENT, RETURN_VALUE
+        }
+    }
+
     data class Pseudocall(val returnMutability: Mutability, val arguments: List<Pseudoarg>)
 
-    context(store: BorroQStore, tree: Tree, node: Node)
-    private fun processPseudoarg(pseudoarg: Pseudoarg) {
-        if (node.type.kind.isPrimitive || node.type.kind == TypeKind.VOID) return
+    context(store: BorroQStore, tree: Tree)
+    private fun processPseudoarg(pseudoarg: Pseudoarg): List<BorroQValue.PseudocallResult.FreeBorrow> {
+        if (pseudoarg.node.type.kind.isPrimitive || pseudoarg.node.type.kind == TypeKind.VOID) return emptyList()
 
         val value = pseudoarg.argument
 
-        silentExceptionReportContext(tree) {
-            store.ensurePermissionOn(pseudoarg.mutability.permission, value, node, pseudoarg.scope, memberTypeAnalysis)
+        silentExceptionReportContext(pseudoarg.node.tree ?: tree) {
+            store.ensurePermissionOn(
+                pseudoarg.mutability.permission, value, pseudoarg.node, pseudoarg.scope, memberTypeAnalysis
+            )
+        }
+
+        return buildList {
+            val (sourceRoot, baseFraction) = if (value is IdentifiedPermission) {
+                PathRoot.IdPathRoot(value.id) to value.fraction
+            } else if (pseudoarg.node is FieldAccessNode) {
+                val (base, path) = extractFieldPath(pseudoarg.node)
+                when (base) {
+                    is ClassNameNode -> PathRoot.StaticPathRoot(base) to Mutability.IMMUTABLE.fraction
+                    else -> TODO("Unsupported base for field access")
+                }
+            } else {
+                TODO("Unsupported pseudo argument: ${pseudoarg.node}")
+            }
+
+            if (pseudoarg.scope.includesBase) {
+                val source = Path(sourceRoot)
+                val fraction = if (pseudoarg.mutability == Mutability.MUTABLE) baseFraction else baseFraction / 2
+                add(
+                    BorroQValue.PseudocallResult.FreeBorrow(
+                        source, fraction, pseudoarg.borrowTarget
+                    )
+                )
+            }
+
+            for (pathTail in pseudoarg.scope.entries) {
+                val source = Path(sourceRoot, pathTail)
+                val lastFieldMutability = memberTypeAnalysis.getFieldMutability(pathTail.fields.last())!!
+                val fraction =
+                    if (pseudoarg.mutability == Mutability.MUTABLE && lastFieldMutability == Mutability.MUTABLE) {
+                        lastFieldMutability.fraction
+                    } else {
+                        val borrowedFraction = store.borrowedFraction(sourceRoot, pathTail)
+                        Rational.HALF - borrowedFraction
+                    }
+                add(BorroQValue.PseudocallResult.FreeBorrow(source, fraction, pseudoarg.borrowTarget))
+            }
         }
     }
 
@@ -170,11 +224,13 @@ class BorroQTransfer(
         pseudocall: Pseudocall
     ): RegularTransferResult<BorroQValue, BorroQStore> {
 
-        for (pseudoarg in pseudocall.arguments) {
-            context(pseudoarg.argTree) { processPseudoarg(pseudoarg) }
+        val attachedBorrows = buildList {
+            for (pseudoarg in pseudocall.arguments) {
+                addAll(processPseudoarg(pseudoarg))
+            }
         }
 
-        val result = BorroQValue.PseudocallResult(Permission(pseudocall.returnMutability.fraction), emptyList())
+        val result = BorroQValue.PseudocallResult(Permission(pseudocall.returnMutability.fraction), attachedBorrows)
         return node.regularResult(result, store, storeChanged = true)
     }
 
@@ -196,13 +252,20 @@ class BorroQTransfer(
             throw IncompatibleSuperConstructorMutability()
         }
 
+        val borrowTarget =
+            if (executableElement.isConstructor) Pseudoarg.BorrowTarget.RETURN_VALUE else Pseudoarg.BorrowTarget.PERSISTENT
+
         val receiverArg = methodType.receiverType?.let { receiverType ->
             val receiverValue = input.getValueOfSubNode(receiver)!!
-            Pseudoarg(receiverType.mutability, receiverType.scope, receiverValue, receiver!!.tree ?: node.tree!!)
+            Pseudoarg(
+                receiverType.mutability, receiverType.scope, borrowTarget, receiverValue, receiver!!
+            )
         }
         val arguments = listOfNotNull(receiverArg) + arguments.zip(methodType.parameters)
             .mapNotNull { (arg, paramType) -> paramType?.let { arg to it } }.map { (arg, paramType) ->
-                Pseudoarg(paramType.mutability, paramType.scope, input.getValueOfSubNode(arg)!!, arg.tree!!)
+                Pseudoarg(
+                    paramType.mutability, paramType.scope, borrowTarget, input.getValueOfSubNode(arg)!!, arg
+                )
             }
 
         val pseudocall = Pseudocall(methodType.returnMutability ?: Mutability.IMMUTABLE, arguments)
@@ -315,8 +378,9 @@ class BorroQTransfer(
         val receiverPseudoarg = Pseudoarg(
             Mutability.MUTABLE,
             Scope(includesBase = true, emptyList()),
+            Pseudoarg.BorrowTarget.RETURN_VALUE,
             input.getValueOfSubNode(target.receiver)!!,
-            target.receiver.tree ?: target.tree!!
+            target.receiver
         )
 
         val fieldMutability = memberTypeAnalysis.getFieldMutability(target.element) ?: return node.regularResult(
@@ -325,8 +389,9 @@ class BorroQTransfer(
         val valuePseudoarg = Pseudoarg(
             fieldMutability,
             Scope.full(node.expression.type, checker.elementUtils),
+            Pseudoarg.BorrowTarget.PERSISTENT,
             input.getValueOfSubNode(node.expression)!!,
-            node.expression.tree!!
+            node.expression
         )
 
         val pseudocall = Pseudocall(Mutability.IMMUTABLE, listOf(receiverPseudoarg, valuePseudoarg))
@@ -377,7 +442,7 @@ class BorroQTransfer(
             else -> visitNode(node, input)
         }
     }
-    //endregion
+//endregion
 
     //region field access
     private fun inferFieldAccessMutabilityInBlock(node: FieldAccessNode, block: Block): Mutability {
@@ -427,7 +492,11 @@ class BorroQTransfer(
 
         val targetMutability = inferFieldAccessMutability(node)
         val receiverArg = Pseudoarg(
-            targetMutability, Scope(false, listOf(pathTail)), input.getValueOfSubNode(base)!!, node.tree!!
+            targetMutability,
+            Scope(false, listOf(pathTail)),
+            Pseudoarg.BorrowTarget.PERSISTENT,
+            input.getValueOfSubNode(base)!!,
+            node
         )
         val pseudocall = Pseudocall(targetMutability, listOf(receiverArg))
 
@@ -435,7 +504,7 @@ class BorroQTransfer(
             processPseudocall(pseudocall)
         }
     }
-    //endregion
+//endregion
 
     override fun visitLocalVariable(
         node: LocalVariableNode, input: Input
@@ -520,7 +589,9 @@ class BorroQTransfer(
                 ?: DefaultInference.inferArrayElementMutability()
             val scope = TODO("Full scope if mutable")
             node.initializers.map {
-                Pseudoarg(elementMutability, scope, input.getValueOfSubNode(it)!!, it.tree!!)
+                Pseudoarg(
+                    elementMutability, scope, Pseudoarg.BorrowTarget.RETURN_VALUE, input.getValueOfSubNode(it)!!, it
+                )
             }
         } else emptyList()
 
@@ -543,10 +614,19 @@ class BorroQTransfer(
         } ?: DefaultInference.inferTypeParameterMutability()
 
         val arrayScope = TODO("Array scope")
-        val arrayPseudoarg =
-            Pseudoarg(Mutability.IMMUTABLE, arrayScope, input.getValueOfSubNode(node.array)!!, node.array.tree!!)
+        val arrayPseudoarg = Pseudoarg(
+            Mutability.IMMUTABLE,
+            arrayScope,
+            Pseudoarg.BorrowTarget.RETURN_VALUE,
+            input.getValueOfSubNode(node.array)!!,
+            node.array
+        )
         val indexPseudoarg = Pseudoarg(
-            Mutability.IMMUTABLE, Scope(false, emptyList()), input.getValueOfSubNode(node.index)!!, node.index.tree!!
+            Mutability.IMMUTABLE,
+            Scope(false, emptyList()),
+            Pseudoarg.BorrowTarget.RETURN_VALUE,
+            input.getValueOfSubNode(node.index)!!,
+            node.index
         )
         val pseudocall = Pseudocall(componentMutability, listOf(arrayPseudoarg, indexPseudoarg))
 
@@ -554,7 +634,7 @@ class BorroQTransfer(
             processPseudocall(pseudocall)
         }
     }
-    // endregion array stuff
+// endregion array stuff
 
     companion object {
         val ThisId = Id("this")
