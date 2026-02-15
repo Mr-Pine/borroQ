@@ -575,25 +575,19 @@ class BorroQTransfer(
 
         val returnValue = input.getValueOfSubNode(result)!!
 
-        if (returnValue is BorroQValue.PseudocallResult) {
-            val borrows =
-                returnValue.attachedBorrows.map { it.toBorrow(Id("SHOULD_BE_DELETED", -1)) }.filter { it.target !is Id }
-            borrows.forEach(input.regularStore::addBorrow)
-        }
+        val pseudoarg = Pseudoarg(
+            signatureType.returnMutability!!,
+            Scope.full(result.type, checker.elementUtils),
+            Pseudoarg.BorrowTarget.RETURN_VALUE,
+            returnValue,
+            result
+        )
 
-        val store = input.regularStore
-        silentExceptionReportContext(result.tree!!) {
-            store.ensureDeepPermission(
-                signatureType.returnMutability!!.permission,
-                returnValue,
-                result,
-                checker.elementUtils,
-                memberTypeAnalysis,
-                emptyList()
-            )
-        }
+        val pseudocall = Pseudocall(Mutability.IMMUTABLE, listOf(pseudoarg))
 
-        return node.regularResult(null, store, false)
+        return context(input.regularStore, node.tree!!, node) {
+            processPseudocall(pseudocall, input)
+        }
     }
 
     override fun visitClassName(
