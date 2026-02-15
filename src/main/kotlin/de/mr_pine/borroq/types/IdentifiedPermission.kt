@@ -26,8 +26,7 @@ class IdentifiedPermission(val fraction: Rational, val id: Id) : VariablePermiss
     }
 
     override fun toString(): String {
-        val perm = super.toString()
-        return "${perm}_${id.name}"
+        return "[${fraction}]_${id.name}"
     }
 
     override fun equals(other: Any?): Boolean {

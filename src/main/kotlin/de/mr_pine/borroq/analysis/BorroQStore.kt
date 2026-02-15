@@ -233,8 +233,26 @@ data class BorroQStore(
         }
         val combinedThisPermission = other.thisPermission?.let { otherThis -> thisPermission?.combine(otherThis) }
 
+        fun List<Borrow>.normalized() = groupBy { it.source to it.target }.map { (keyTarget, fractions) ->
+            val combinedFraction = fractions.map { it.fraction }.fold(Rational.ZERO, Rational::plus)
+            Borrow(keyTarget.first, combinedFraction, keyTarget.second)
+        }
+
         val borrows =
-            (borrowList + other.borrowList).groupBy { it.source to it.target }.values.map { it.maxBy { it.fraction } }
+            (borrowList.normalized() + other.borrowList.normalized()).groupBy { it.source to it.target }.values.map { borrows ->
+                if (borrows.size != 2) return@map borrows.single()
+
+                val (own, other) = borrows
+                val fullFractions = Mutability.entries.map(Mutability::fraction) + Rational.ZERO
+                if (own.fraction in fullFractions || other.fraction in fullFractions) {
+                    borrows.maxBy { it.fraction }
+                } else {
+                    // This is to enable convergence for loops. If we are in this branch, the exact amount of "fraction" we
+                    // have left doesn't matter, both borrows guarantee "not mutable until target not active".
+                    // Choosing the lower borrow stops the iteration
+                    borrows.minBy { it.fraction }
+                }
+            }
 
         return BorroQStore(
             checker,
