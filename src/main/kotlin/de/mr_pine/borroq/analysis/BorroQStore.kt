@@ -51,17 +51,14 @@ data class BorroQStore(
 
     fun updatePermission(target: Node, permission: VariablePermission) {
         when (val expression = JavaExpression.fromNode(target)) {
-            is LocalVariable -> updatePermission(expression, permission)
-            else -> TODO()
+            is LocalVariable -> {
+                variablePermissions[expression] = permission
+            }
+
+            else -> {
+                thisPermission = permission
+            }
         }
-    }
-
-    fun updatePermission(target: LocalVariable, permission: VariablePermission) {
-        variablePermissions[target] = permission
-    }
-
-    fun updateThisPermission(permission: VariablePermission) {
-        thisPermission = permission
     }
 
     fun recombine(receiver: LocalVariable, permission: IdentifiedPermission) {
