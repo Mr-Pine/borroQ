@@ -8,13 +8,16 @@ import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.BorroQValue
 import de.mr_pine.borroq.types.Id
 import de.mr_pine.borroq.types.IdentifiedPermission
+import de.mr_pine.borroq.types.Permission
+import de.mr_pine.borroq.types.specifiers.Mutability
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.node.*
+import javax.lang.model.type.TypeKind
 
 typealias Result = TransferResult<BorroQValue, BorroQStore>
 typealias Input = TransferInput<BorroQValue, BorroQStore>
 
-abstract class BorroQNoopTransfer(
+abstract class BorroQBaseTransfer(
     private val liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
     private val checker: BorroQChecker,
     private val configuration: Configuration
@@ -26,7 +29,7 @@ abstract class BorroQNoopTransfer(
 
         val isStatementExpression =
             this.block?.successors.orEmpty().any { it.nodes.firstOrNull() is ExpressionStatementNode }
-        if (isStatementExpression && value is BorroQValue.PseudocallResult) {
+        if (isStatementExpression && value is BorroQValue.FreePermission) {
             val borrows =
                 value.attachedBorrows.map { it.toBorrow(Id("SHOULD_BE_DELETED", -1)) }.filter { it.target !is Id }
             borrows.forEach(store::addBorrow)
@@ -63,9 +66,27 @@ abstract class BorroQNoopTransfer(
         return RegularTransferResult(value, store, storeChanged)
     }
 
-    protected fun doNothing(
+    protected fun propagateFreeBorrowsImmutable(
         node: Node, input: Input
-    ): Result = node.regularResult(null, input.regularStore, false)
+    ): Result {
+        val operandResults = node.operands.map { input.getValueOfSubNode(it) }
+        require(
+            operandResults.zip(node.operands)
+                .all { (res, op) ->
+                    res is BorroQValue.FreePermission || res is IdentifiedPermission || op.type.kind in listOf(
+                        TypeKind.EXECUTABLE
+                    )
+                }) {
+            "Bad res for one of ${node.operands.map { it.type.kind }}"
+        }
+        val freeBorrows = operandResults.filterIsInstance<BorroQValue.FreePermission>()
+            .flatMap { it.attachedBorrows }
+        return node.regularResult(
+            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), freeBorrows),
+            input.regularStore,
+            false
+        )
+    }
 
     override fun visitNode(
         node: Node, p: Input
@@ -74,71 +95,69 @@ abstract class BorroQNoopTransfer(
         return node.regularResult(null, p.regularStore, false)
     }
 
-    //region Noop visit functions
     override fun visitVariableDeclaration(
         n: VariableDeclarationNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitMarker(
         n: MarkerNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitTernaryExpression(
         n: TernaryExpressionNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitNumericalPlus(
         n: NumericalPlusNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitNumericalAddition(
         n: NumericalAdditionNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitNumericalSubtraction(
         n: NumericalSubtractionNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitLessThan(
         n: LessThanNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitIntegerRemainder(
         n: IntegerRemainderNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitEqualTo(
         n: EqualToNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitExpressionStatement(
         n: ExpressionStatementNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
 
     override fun visitMethodAccess(
         n: MethodAccessNode, p: Input
     ): Result {
-        return doNothing(n, p)
+        return propagateFreeBorrowsImmutable(n, p)
     }
-    //endregion
 }

@@ -6,7 +6,7 @@ import de.mr_pine.borroq.analysis.exceptions.InsufficientDeepPermissionException
 import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionException
 import de.mr_pine.borroq.analysis.transfer.BorroQTransfer.Pseudoarg.BorrowTarget
 import de.mr_pine.borroq.types.*
-import de.mr_pine.borroq.types.BorroQValue.PseudocallResult.FreeBorrow
+import de.mr_pine.borroq.types.BorroQValue.FreePermission.FreeBorrow
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.ArgPermission
 import de.mr_pine.borroq.types.specifiers.Mutability
@@ -20,6 +20,8 @@ import org.checkerframework.dataflow.expression.FieldAccess
 import org.checkerframework.dataflow.expression.JavaExpression
 import org.checkerframework.dataflow.expression.LocalVariable
 import org.checkerframework.dataflow.expression.ThisReference
+import javax.lang.model.element.*
+import javax.lang.model.type.TypeMirror
 import javax.lang.model.util.Elements
 
 private val logger = KotlinLogging.logger { }
@@ -169,7 +171,7 @@ data class BorroQStore(
     ) {
         val fraction = when (value) {
             is IdentifiedPermission -> value.fraction
-            is BorroQValue.PseudocallResult -> value.permission.fraction
+            is BorroQValue.FreePermission -> value.permission.fraction
             else -> throw InsufficientShallowPermissionException(node, permission)
         }
 
@@ -323,6 +325,53 @@ data class BorroQStore(
             "${this::class.simpleName}()"
         } else {
             "${this::class.simpleName}(${viz.separator}$content${viz.separator})"
+        }
+    }
+
+    companion object {
+        data class ArrayValuesVirtualField(val type: TypeMirror) : VariableElement {
+            override fun asType() = type
+
+            override fun getKind(): ElementKind {
+                return ElementKind.OTHER
+            }
+
+            override fun getModifiers(): Set<Modifier> = emptySet()
+
+            override fun getConstantValue() = null
+
+            override fun getSimpleName() = object : Name {
+                override fun toString(): String {
+                    return "<arrray-values>"
+                }
+
+                override fun contentEquals(p0: CharSequence?): Boolean {
+                    return p0 == toString()
+                }
+
+                override val length = toString().length
+
+                override fun get(index: Int) = toString()[index]
+
+                override fun subSequence(startIndex: Int, endIndex: Int) = toString().subSequence(startIndex, endIndex)
+
+            }
+
+            override fun getEnclosingElement() = null
+            override fun getEnclosedElements(): List<Element> = emptyList()
+
+            override fun getAnnotationMirrors(): List<AnnotationMirror?> = emptyList()
+
+            override fun <A : Annotation?> getAnnotation(p0: Class<A?>): A? = null
+
+            override fun <A : Annotation?> getAnnotationsByType(p0: Class<A?>): Array<out A?> = emptyArray<Annotation?>() as Array<out A?>
+
+            override fun <R : Any?, P : Any?> accept(
+                p0: ElementVisitor<R?, P?>,
+                p1: P?
+            ): R? {
+                throw IllegalStateException("Should not be called")
+            }
         }
     }
 }

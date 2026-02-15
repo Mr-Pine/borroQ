@@ -7,13 +7,14 @@ import com.sun.tools.javac.code.Type
 import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.analysis.BorroQStore
+import de.mr_pine.borroq.analysis.BorroQStore.Companion.ArrayValuesVirtualField
 import de.mr_pine.borroq.analysis.Configuration.BorroQExtensions.Extension
 import de.mr_pine.borroq.analysis.DefaultInference
 import de.mr_pine.borroq.analysis.exceptions.*
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
-import de.mr_pine.borroq.types.BorroQValue.PseudocallResult.FreeBorrow
+import de.mr_pine.borroq.types.BorroQValue.FreePermission.FreeBorrow
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.Scope
@@ -46,7 +47,7 @@ class BorroQTransfer(
     private val checker: BorroQChecker,
     private val annotationQuery: de.mr_pine.borroq.analysis.AnnotationQuery,
     private val configuration: de.mr_pine.borroq.analysis.Configuration
-) : BorroQNoopTransfer(liveness, checker, configuration) {
+) : BorroQBaseTransfer(liveness, checker, configuration) {
 
     lateinit var parameterIds: Map<LocalVariableNode, Id>
 
@@ -185,7 +186,7 @@ class BorroQTransfer(
             return processPseudoarg(pseudoarg, input, additionalBorrows)
         }
 
-        if (pseudoarg.argument is BorroQValue.PseudocallResult && pseudoarg.argument.attachedBorrows.isNotEmpty()) {
+        if (pseudoarg.argument is BorroQValue.FreePermission && pseudoarg.argument.attachedBorrows.isNotEmpty()) {
             TODO("Handle attached borrows in pseudo argument handling")
         }
 
@@ -209,7 +210,7 @@ class BorroQTransfer(
                 PathRoot.IdPathRoot(value.id) to value.fraction
             } else if (pseudoarg.node is ClassNameNode) {
                 PathRoot.StaticPathRoot(pseudoarg.node) to Mutability.IMMUTABLE.fraction
-            } else if (value is BorroQValue.PseudocallResult) {
+            } else if (value is BorroQValue.FreePermission) {
                 return value.attachedBorrows
             } else {
                 TODO("Unsupported pseudo argument: ${pseudoarg.node}")
@@ -218,7 +219,8 @@ class BorroQTransfer(
             if (pseudoarg.scope.includesBase) {
                 val source = Path(sourceRoot)
                 val borrowedFraction = store.borrowedFraction(sourceRoot, PathTail(emptyList()), additionalBorrows)
-                val fraction = if (pseudoarg.mutability == Mutability.MUTABLE) baseFraction else (baseFraction - borrowedFraction) / 2
+                val fraction =
+                    if (pseudoarg.mutability == Mutability.MUTABLE) baseFraction else (baseFraction - borrowedFraction) / 2
                 add(
                     FreeBorrow(
                         source, fraction, pseudoarg.borrowTarget
@@ -252,7 +254,7 @@ class BorroQTransfer(
             }
         }
 
-        val result = BorroQValue.PseudocallResult(Permission(pseudocall.returnMutability.fraction), attachedBorrows)
+        val result = BorroQValue.FreePermission(Permission(pseudocall.returnMutability.fraction), attachedBorrows)
         return node.regularResult(result, store, storeChanged = true)
     }
 
@@ -334,7 +336,7 @@ class BorroQTransfer(
         return when (val rhsValue =
             input.getValueOfSubNode(node.expression) ?: return node.regularResult(null, input.regularStore, false)) {
             // The right hand side is a pseudocall
-            is BorroQValue.PseudocallResult -> {
+            is BorroQValue.FreePermission -> {
                 if (targetMutability != null && rhsValue.permission.fraction < targetMutability.fraction) silentExceptionReportContext(
                     node.expression.tree!!
                 ) {
@@ -519,6 +521,11 @@ class BorroQTransfer(
                 receiver to PathTail(node.element)
             }
 
+            is ArrayAccessNode -> {
+                val elementType = receiver.array.annotatedType.let { it as ArrayType }.componentType
+                receiver.array to PathTail(listOf(ArrayValuesVirtualField(elementType)))
+            }
+
             else -> TODO("Extract field path for $receiver")
         }
 
@@ -556,7 +563,10 @@ class BorroQTransfer(
         node: LocalVariableNode, input: Input
     ): Result {
         require(!input.containsTwoStores()) { "Local variable node $node has two stores" }
-        val permission = input.regularStore.queryPermission(node)
+        val permission = if (node.type.kind.isPrimitive) BorroQValue.FreePermission(
+            Permission(Mutability.IMMUTABLE.fraction),
+            emptyList()
+        ) else input.regularStore.queryPermission(node)
         return node.regularResult(permission, input.regularStore, false)
     }
 
@@ -604,7 +614,7 @@ class BorroQTransfer(
         node: ClassNameNode, input: Input
     ): Result {
         return node.regularResult(
-            BorroQValue.PseudocallResult(Permission(Mutability.IMMUTABLE.fraction), emptyList()), input.regularStore
+            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), emptyList()), input.regularStore
         )
     }
 
@@ -612,7 +622,7 @@ class BorroQTransfer(
         node: StringLiteralNode, input: Input
     ): Result {
         return node.regularResult(
-            BorroQValue.PseudocallResult(Permission(Mutability.IMMUTABLE.fraction), emptyList()), input.regularStore
+            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), emptyList()), input.regularStore
         )
     }
 
@@ -621,7 +631,7 @@ class BorroQTransfer(
             configuration.borroQExtensions.requireExtension(Extension.ALL_PRIMITIVES, node, checker)
         }
         return node.regularResult(
-            null, p.regularStore
+            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), emptyList()), p.regularStore
         )
     }
 
@@ -631,16 +641,14 @@ class BorroQTransfer(
 
         val elementType = (node.type as Type.ArrayType).elemtype
 
-        val pseudoargs = if (elementType.isPrimitive) {
-            val elementMutability = Mutability.fromAnnotations(elementType.annotationMirrors)
-                ?: DefaultInference.inferArrayElementMutability()
-            val scope = TODO("Full scope if mutable")
-            node.initializers.map {
-                Pseudoarg(
-                    elementMutability, scope, Pseudoarg.BorrowTarget.RETURN_VALUE, input.getValueOfSubNode(it)!!, it
-                )
-            }
-        } else emptyList()
+        val elementMutability = Mutability.fromAnnotations(elementType.annotationMirrors)
+            ?: DefaultInference.inferArrayElementMutability()
+        val scope = Scope.full(elementType, checker.elementUtils)
+        val pseudoargs = node.initializers.map {
+            Pseudoarg(
+                elementMutability, scope, Pseudoarg.BorrowTarget.RETURN_VALUE, input.getValueOfSubNode(it)!!, it
+            )
+        }
 
         val pseudocall = Pseudocall(Mutability.MUTABLE, pseudoargs)
 
@@ -654,13 +662,15 @@ class BorroQTransfer(
     ): Result {
         configuration.borroQExtensions.requireExtension(Extension.ARRAYS, node, checker)
 
-        val componentMutability = node.array.annotatedType.let { it as ArrayType }.componentType.let {
+        val componentType = node.array.annotatedType.let { it as ArrayType }.componentType
+
+        val componentMutability = componentType.let {
             Mutability.fromAnnotations(
                 it.annotationMirrors
             )
         } ?: DefaultInference.inferTypeParameterMutability()
 
-        val arrayScope = TODO("Array scope")
+        val arrayScope = Scope(false, listOf(PathTail(listOf(ArrayValuesVirtualField(componentType)))))
         val arrayPseudoarg = Pseudoarg(
             Mutability.IMMUTABLE,
             arrayScope,
@@ -691,7 +701,7 @@ class BorroQTransfer(
         n: TypeCastNode, p: Input
     ): Result {
         if (n.type.kind.isPrimitive) {
-            return doNothing(n, p)
+            return propagateFreeBorrowsImmutable(n, p)
         }
         return visitNode(n, p)
     }

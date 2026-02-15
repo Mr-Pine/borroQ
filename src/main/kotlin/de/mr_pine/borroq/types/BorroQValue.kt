@@ -8,7 +8,7 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
         TODO("Not yet implemented")
     }
 
-    data class PseudocallResult(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
+    data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
 
         data class FreeBorrow(
             val source: Path,
