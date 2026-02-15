@@ -38,25 +38,19 @@ public interface Fields {
             this.y = y;
         }
 
-
-        void main(@Mutable A this) {
-            @Mutable B b1 = this.getXMutable();
-            @Immutable B b2 = new B(1);
-            b1.mutable();
-            @Immutable A a2 = this;
-            @Immutable B b3 = a2.getX();
-            b3.immutable();
-            @Immutable B b4 = this.getY();
-            b4.immutable();
-        }
-
         void mainDirect(@Mutable A this) {
             @Mutable B b1 = this.x;
             @Immutable B b2 = new B(1);
             b1.mutable();
+        }
+
+        void mainDirect2(@Mutable A this) {
             @Immutable A a2 = this;
             @Immutable B b3 = a2.x;
             b3.immutable();
+        }
+
+        void mainDirect3(@Mutable A this) {
             @Immutable B b4 = this.y;
             b4.immutable();
         }

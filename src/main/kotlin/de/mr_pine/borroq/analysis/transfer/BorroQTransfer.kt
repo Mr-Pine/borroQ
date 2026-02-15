@@ -209,13 +209,16 @@ class BorroQTransfer(
                 PathRoot.IdPathRoot(value.id) to value.fraction
             } else if (pseudoarg.node is ClassNameNode) {
                 PathRoot.StaticPathRoot(pseudoarg.node) to Mutability.IMMUTABLE.fraction
+            } else if (value is BorroQValue.PseudocallResult) {
+                return value.attachedBorrows
             } else {
                 TODO("Unsupported pseudo argument: ${pseudoarg.node}")
             }
 
             if (pseudoarg.scope.includesBase) {
                 val source = Path(sourceRoot)
-                val fraction = if (pseudoarg.mutability == Mutability.MUTABLE) baseFraction else baseFraction / 2
+                val borrowedFraction = store.borrowedFraction(sourceRoot, PathTail(emptyList()), additionalBorrows)
+                val fraction = if (pseudoarg.mutability == Mutability.MUTABLE) baseFraction else (baseFraction - borrowedFraction) / 2
                 add(
                     FreeBorrow(
                         source, fraction, pseudoarg.borrowTarget
@@ -226,7 +229,6 @@ class BorroQTransfer(
             for (pathTail in pseudoarg.scope.entries) {
                 val source = Path(sourceRoot, pathTail)
                 val lastFieldMutability = memberTypeAnalysis.getFieldMutability(pathTail.fields.last())
-                    ?: DefaultInference.inferFieldMutability()
                 val fraction =
                     if (pseudoarg.mutability == Mutability.MUTABLE && lastFieldMutability == Mutability.MUTABLE) {
                         lastFieldMutability.fraction
@@ -266,6 +268,13 @@ class BorroQTransfer(
             }
         })
 
+        val returnMutability = if (executableElement.returnType.kind == TypeKind.TYPEVAR) {
+            Mutability.fromAnnotations(annotationQuery.getTypeMutability(node.tree!!))
+                ?: DefaultInference.inferTypeParameterMutability()
+        } else {
+            methodType.returnMutability
+        } ?: Mutability.IMMUTABLE
+
         if (executableElement.isConstructor && methodType.returnMutability == Mutability.IMMUTABLE && signatureType.returnMutability == Mutability.MUTABLE) silentExceptionReportContext(
             node.tree!!
         ) {
@@ -288,7 +297,7 @@ class BorroQTransfer(
                 )
             }
 
-        val pseudocall = Pseudocall(methodType.returnMutability ?: Mutability.IMMUTABLE, arguments)
+        val pseudocall = Pseudocall(returnMutability, arguments)
 
         return context(input.regularStore, node.tree!!, node) {
             processPseudocall(pseudocall, input)
@@ -338,6 +347,7 @@ class BorroQTransfer(
 
                 val store = input.regularStore
                 val targetId = store.createFreshId(target)
+
                 val targetPermission = IdentifiedPermission(newFraction, targetId)
                 val borrows = rhsValue.attachedBorrows.map { it.toBorrow(targetId) }
 
@@ -465,7 +475,7 @@ class BorroQTransfer(
 
     //region field access
     private fun inferFieldAccessMutabilityInBlock(node: FieldAccessNode, block: Block): Mutability {
-        if (block is ExceptionBlock) inferFieldAccessMutabilityInBlock(node, block.successor!!)
+        if (block is ExceptionBlock) return inferFieldAccessMutabilityInBlock(node, block.successor!!)
 
         for (usageNode in block.nodes) {
             if (usageNode.operands.contains(node)) {
@@ -477,7 +487,7 @@ class BorroQTransfer(
                     }
 
                     is TypeCastNode -> {
-                        Mutability.fromAnnotations(annotationQuery.getTypeCastResultMutability(usageNode.tree!!))
+                        Mutability.fromAnnotations(annotationQuery.getTypeMutability(usageNode.tree!!))
                     }
 
                     else -> {

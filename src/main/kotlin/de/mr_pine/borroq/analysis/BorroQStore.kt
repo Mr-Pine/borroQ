@@ -251,8 +251,7 @@ data class BorroQStore(
         val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.map { fields.take(it + 1) } }
         return pathTailPrefixes.all { fields ->
             val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields), freeBorrows)
-            val maximumFraction = (memberTypeAnalysis.getFieldMutability(fields.last())
-                ?: DefaultInference.inferFieldMutability()).fraction
+            val maximumFraction = memberTypeAnalysis.getFieldMutability(fields.last()).fraction
             borrowedFraction < maximumFraction
         }
     }
@@ -265,7 +264,7 @@ data class BorroQStore(
             val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields), freeBorrows)
 
             val fieldMutability =
-                memberTypeAnalysis.getFieldMutability(fields.last()) ?: DefaultInference.inferFieldMutability()
+                memberTypeAnalysis.getFieldMutability(fields.last())
 
             if (fieldMutability == Mutability.MUTABLE) {
                 borrowedFraction == Rational.ZERO

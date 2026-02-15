@@ -25,7 +25,7 @@ abstract class BorroQNoopTransfer(
     ): RegularTransferResult<BorroQValue, BorroQStore> {
 
         val isStatementExpression =
-            this.block?.successors.orEmpty().any { it.nodes.singleOrNull() is ExpressionStatementNode }
+            this.block?.successors.orEmpty().any { it.nodes.firstOrNull() is ExpressionStatementNode }
         if (isStatementExpression && value is BorroQValue.PseudocallResult) {
             val borrows =
                 value.attachedBorrows.map { it.toBorrow(Id("SHOULD_BE_DELETED", -1)) }.filter { it.target !is Id }

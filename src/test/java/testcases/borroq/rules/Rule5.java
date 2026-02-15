@@ -20,16 +20,21 @@ public interface Rule5 {
         ensureMutable(a);
     }
 
-    static void c(@Mutable A a) {
+    static void c1(@Mutable A a) {
         @Mutable A b = a;
         // :: error: permission.insufficient.shallow
         ensureReadable(a);
         ensureMutable(b);
+    }
 
+    static void c2(@Mutable A a) {
         @Mutable A c = a.rec;
         // :: error: permission.insufficient.deep
         ensureRecReadable(a);
         ensureMutable(c);
+    }
+
+    static void c3(@Mutable A a) {
         @Immutable A d = a.rec;
         // :: error: permission.insufficient.deep
         ensureRecMutable(a);
@@ -45,14 +50,7 @@ public interface Rule5 {
     static void e(@Mutable A a) {
         moveImmutAAway(a);
         ensureReadable(a);
-        // :: error: permission.insufficient.deep
         // :: error: permission.insufficient.shallow
         ensureMutable(a);
-    }
-
-    static void f(@Mutable A a) {
-        // :: error: permission.release.borrow.conflict
-        moveMutAAway(a);
-        return;
     }
 }

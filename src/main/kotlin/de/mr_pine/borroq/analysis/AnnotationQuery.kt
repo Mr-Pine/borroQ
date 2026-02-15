@@ -16,7 +16,7 @@ class AnnotationQuery(val checker: BorroQChecker) {
         else -> null
     }
 
-    fun getTypeCastResultMutability(tree: Tree): List<AnnotationMirror> {
+    fun getTypeMutability(tree: Tree): List<AnnotationMirror> {
         return TreeUtils.typeOf(tree).annotationMirrors
     }
 }

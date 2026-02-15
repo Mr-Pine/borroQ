@@ -27,7 +27,7 @@ public interface MutClassFields {
         Box box2 = new Box(99);
         @Immutable Cat nyan = new Cat(box1, box2);
 
-        // :: error: permission.insufficient.shallow.assignment.target.receiver
+        // :: error: permission.insufficient.shallow
         nyan.howHungry.value = 0;
     }
 }
