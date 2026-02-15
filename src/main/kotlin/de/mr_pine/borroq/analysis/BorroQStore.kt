@@ -4,7 +4,9 @@ import de.mr_pine.borroq.BorroQChecker
 import de.mr_pine.borroq.analysis.Configuration.BorroQExtensions.Extension
 import de.mr_pine.borroq.analysis.exceptions.InsufficientDeepPermissionException
 import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionException
+import de.mr_pine.borroq.analysis.transfer.BorroQTransfer.Pseudoarg.BorrowTarget
 import de.mr_pine.borroq.types.*
+import de.mr_pine.borroq.types.BorroQValue.PseudocallResult.FreeBorrow
 import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.ArgPermission
 import de.mr_pine.borroq.types.specifiers.Mutability
@@ -165,7 +167,9 @@ data class BorroQStore(
         }
     }
 
-    private fun ensureShallowPermission(permission: ArgPermission, node: Node, value: BorroQValue) {
+    private fun ensureShallowPermission(
+        permission: ArgPermission, node: Node, value: BorroQValue, freeBorrows: List<FreeBorrow>
+    ) {
         val fraction = when (value) {
             is IdentifiedPermission -> value.fraction
             is BorroQValue.PseudocallResult -> value.permission.fraction
@@ -184,8 +188,10 @@ data class BorroQStore(
                     .filter { it.id == value.id }.map(IdentifiedPermission::fraction)
                     .fold(Rational.ZERO, Rational::plus)
             val borrowedFraction =
-                borrowList.filter { it.source.root == PathRoot.IdPathRoot(value.id) }.map { it.fraction }
-                    .fold(Rational.ZERO, Rational::plus)
+                borrowList.asSequence().map { FreeBorrow(it.source, it.fraction, BorrowTarget.PERSISTENT) }
+                    .plus(freeBorrows)
+                    .filter { it.source.root == PathRoot.IdPathRoot(value.id) && it.source.tail.fields.isEmpty() }
+                    .map { it.fraction }.fold(Rational.ZERO, Rational::plus)
 
             val borrowsOk = when (permission) {
                 ArgPermission.READABLE -> borrowedFraction < idFraction
@@ -200,16 +206,22 @@ data class BorroQStore(
         value: BorroQValue,
         node: Node,
         elements: Elements,
-        memberTypeAnalysis: MemberTypeAnalysis
+        memberTypeAnalysis: MemberTypeAnalysis,
+        freeBorrows: List<FreeBorrow>
     ) {
         val fullScope = Scope.full(node.type, elements)
-        ensurePermissionOn(permission, value, node, fullScope, memberTypeAnalysis)
+        ensurePermissionOn(permission, value, node, fullScope, memberTypeAnalysis, freeBorrows)
     }
 
     fun ensurePermissionOn(
-        permission: ArgPermission, value: BorroQValue, node: Node, scope: Scope, memberTypeAnalysis: MemberTypeAnalysis
+        permission: ArgPermission,
+        value: BorroQValue,
+        node: Node,
+        scope: Scope,
+        memberTypeAnalysis: MemberTypeAnalysis,
+        freeBorrows: List<FreeBorrow>
     ) {
-        ensureShallowPermission(permission, node, value)
+        ensureShallowPermission(permission, node, value, freeBorrows)
 
         if (value !is IdentifiedPermission) {
             configuration.borroQExtensions.requireExtension(Extension.NESTED_FIELD_ACCESS, node.tree!!, checker)
@@ -223,31 +235,37 @@ data class BorroQStore(
             ArgPermission.MUTABLE -> ::isMutable
         }
         for (scopeTail in scope.entries) {
-            if (!check(id, scopeTail, memberTypeAnalysis)) {
+            if (!check(id, scopeTail, memberTypeAnalysis, freeBorrows)) {
                 throw InsufficientDeepPermissionException(scopeTail, permission)
             }
         }
     }
 
-    fun borrowedFraction(root: PathRoot, pathTail: PathTail): Rational {
+    fun borrowedFraction(root: PathRoot, pathTail: PathTail, freeBorrows: List<FreeBorrow>): Rational {
         val borrowSource = Path(root, pathTail)
-        return borrowList.filter { it.source == borrowSource }.map { it.fraction }.fold(Rational.ZERO, Rational::plus)
+        return borrowList.asSequence().map { FreeBorrow(it.source, it.fraction, BorrowTarget.PERSISTENT) }
+            .plus(freeBorrows).filter { it.source == borrowSource }.map { it.fraction }
+            .fold(Rational.ZERO, Rational::plus)
     }
 
-    private fun isReadable(id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis): Boolean {
-        val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.drop(1).map { fields.take(it) } }
+    private fun isReadable(
+        id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis, freeBorrows: List<FreeBorrow>
+    ): Boolean {
+        val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.map { fields.take(it + 1) } }
         return pathTailPrefixes.all { fields ->
-            val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields))
+            val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields), freeBorrows)
             val maximumFraction = (memberTypeAnalysis.getFieldMutability(fields.last())
                 ?: DefaultInference.inferFieldMutability()).fraction
             borrowedFraction < maximumFraction
         }
     }
 
-    private fun isMutable(id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis): Boolean {
-        val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.drop(1).map { fields.take(it) } }
+    private fun isMutable(
+        id: Id, pathTail: PathTail, memberTypeAnalysis: MemberTypeAnalysis, freeBorrows: List<FreeBorrow>
+    ): Boolean {
+        val pathTailPrefixes = pathTail.fields.let { fields -> fields.indices.map { fields.take(it + 1) } }
         return pathTailPrefixes.all { fields ->
-            val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields))
+            val borrowedFraction = borrowedFraction(PathRoot.IdPathRoot(id), PathTail(fields), freeBorrows)
 
             val fieldMutability =
                 memberTypeAnalysis.getFieldMutability(fields.last()) ?: DefaultInference.inferFieldMutability()

@@ -32,5 +32,5 @@ object DefaultInference {
 
     fun inferFieldAccessMutability() = IMMUTABLE
 
-    fun inferDefaultScope(type: TypeMirror, elements: Elements) = Scope(true, emptyList())//Scope.full(type, elements)
+    fun inferDefaultScope(type: TypeMirror, elements: Elements) = Scope.full(type, elements)
 }

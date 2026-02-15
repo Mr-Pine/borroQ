@@ -9,20 +9,15 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
     }
 
     data class PseudocallResult(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
-        init {
-            if (attachedBorrows.isNotEmpty()) {
-                System.err.println("Warning: FreePermission has attached borrows")
-            }
-        }
 
         data class FreeBorrow(
-            val path: Path,
+            val source: Path,
             val fraction: Rational,
-            val borrowTarget: BorrowTarget
+            val targetType: BorrowTarget
         ) {
-            fun toBorrow(id: Borrow.Identifier) = when (borrowTarget) {
-                BorrowTarget.RETURN_VALUE -> Borrow(path, fraction, id)
-                BorrowTarget.PERSISTENT -> Borrow(path, fraction, Borrow.Identifier.Dummy)
+            fun toBorrow(id: Borrow.Identifier) = when (targetType) {
+                BorrowTarget.RETURN_VALUE -> Borrow(source, fraction, id)
+                BorrowTarget.PERSISTENT -> Borrow(source, fraction, Borrow.Identifier.Dummy)
             }
         }
     }
