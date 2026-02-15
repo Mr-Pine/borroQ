@@ -185,6 +185,10 @@ class BorroQTransfer(
             return processPseudoarg(pseudoarg, input, additionalBorrows)
         }
 
+        if (pseudoarg.argument is BorroQValue.PseudocallResult && pseudoarg.argument.attachedBorrows.isNotEmpty()) {
+            TODO("Handle attached borrows in pseudo argument handling")
+        }
+
         if (pseudoarg.node.type.kind.isPrimitive || pseudoarg.node.type.kind == TypeKind.VOID) return emptyList()
 
         val value = pseudoarg.argument
@@ -221,13 +225,14 @@ class BorroQTransfer(
 
             for (pathTail in pseudoarg.scope.entries) {
                 val source = Path(sourceRoot, pathTail)
-                val lastFieldMutability = memberTypeAnalysis.getFieldMutability(pathTail.fields.last())!!
+                val lastFieldMutability = memberTypeAnalysis.getFieldMutability(pathTail.fields.last())
+                    ?: DefaultInference.inferFieldMutability()
                 val fraction =
                     if (pseudoarg.mutability == Mutability.MUTABLE && lastFieldMutability == Mutability.MUTABLE) {
                         lastFieldMutability.fraction
                     } else {
                         val borrowedFraction = store.borrowedFraction(sourceRoot, pathTail, additionalBorrows)
-                        Rational.HALF - borrowedFraction
+                        (Rational.HALF - borrowedFraction) / 2
                     }
                 add(FreeBorrow(source, fraction, pseudoarg.borrowTarget))
             }
@@ -303,6 +308,10 @@ class BorroQTransfer(
     }
 
     //region assignment
+    private fun LocalVariableNode.getTargetMutability() = tree?.let {
+        annotationQuery.getAssignmentLeftSideAnnotations(it)?.let { Mutability.fromAnnotations(it) }
+    }
+
     fun visitLocalVariableAssignment(node: AssignmentNode, target: LocalVariableNode, input: Input): Result {
         require(!input.containsTwoStores()) { "Assignment node $node has two stores" }
         fun result(value: BorroQValue, storeUpdate: BorroQStore.() -> Unit): Result {
@@ -311,23 +320,21 @@ class BorroQTransfer(
             return node.regularResult(value, store)
         }
 
-        val targetMutabilityAnnotation = target.tree?.let {
-            annotationQuery.getAssignmentLeftSideAnnotations(it)?.let { Mutability.fromAnnotations(it) }
-        }
+        val targetMutability = target.getTargetMutability()
 
         return when (val rhsValue =
             input.getValueOfSubNode(node.expression) ?: return node.regularResult(null, input.regularStore, false)) {
             // The right hand side is a pseudocall
             is BorroQValue.PseudocallResult -> {
-                if (targetMutabilityAnnotation != null && rhsValue.permission.fraction < targetMutabilityAnnotation.fraction) silentExceptionReportContext(
+                if (targetMutability != null && rhsValue.permission.fraction < targetMutability.fraction) silentExceptionReportContext(
                     node.expression.tree!!
                 ) {
                     throw InsufficientShallowAssignmentExpressionPermissionException(
-                        node.expression, targetMutabilityAnnotation.fraction, rhsValue
+                        node.expression, targetMutability.fraction, rhsValue
                     )
                 }
 
-                val newFraction = targetMutabilityAnnotation?.fraction ?: rhsValue.permission.fraction
+                val newFraction = targetMutability?.fraction ?: rhsValue.permission.fraction
 
                 val store = input.regularStore
                 val targetId = store.createFreshId(target)
@@ -342,14 +349,14 @@ class BorroQTransfer(
 
             // The right hand side is a local variable or `this`
             is IdentifiedPermission -> {
-                val mutability = targetMutabilityAnnotation ?: DefaultInference.inferVariableMutability(
+                val mutability = targetMutability ?: DefaultInference.inferVariableMutability(
                     rhsValue
                 )
 
                 if (mutability.fraction > rhsValue.fraction) silentExceptionReportContext(
                     node.tree!!
                 ) {
-                    throw InsufficientShallowPermissionException(target.name, mutability.permission, rhsValue)
+                    throw InsufficientShallowPermissionException(target.name, mutability.permission)
                 }
 
                 val (targetPermission, remainingPermission) = rhsValue.split(mutability)
@@ -379,7 +386,6 @@ class BorroQTransfer(
     }
 
     fun visitFieldAssignment(node: AssignmentNode, target: FieldAccessNode, input: Input): Result {
-
         val (base, path) = extractFieldPath(target)
         val receiverId =
             input.getValueOfSubNode(base)?.let { it as? IdentifiedPermission }?.id ?: ThisId.takeIf { base is ThisNode }
@@ -389,19 +395,17 @@ class BorroQTransfer(
             logger.warn { "Could not determine receiver id for field assignment. Cannot check whether $target is in scope" }
         }
 
-
         val receiverPseudoarg = Pseudoarg(
             Mutability.MUTABLE,
-            Scope(includesBase = true, emptyList()),
+            Scope(includesBase = false, listOf(path)),
             Pseudoarg.BorrowTarget.RETURN_VALUE,
-            input.getValueOfSubNode(target.receiver)!!,
-            target.receiver
+            input.getValueOfSubNode(base)!!,
+            base
         )
 
-        val fieldMutability = memberTypeAnalysis.getFieldMutability(target.element) ?: return node.regularResult(
-            null, input.regularStore, false
-        )
-        val valuePseudoarg = Pseudoarg(
+        val fieldMutability = memberTypeAnalysis.getFieldMutability(target.element)
+
+        val valuePseudoarg = if (target.type.kind.isPrimitive) null else Pseudoarg(
             fieldMutability,
             Scope.full(node.expression.type, checker.elementUtils),
             Pseudoarg.BorrowTarget.PERSISTENT,
@@ -409,7 +413,7 @@ class BorroQTransfer(
             node.expression
         )
 
-        val pseudocall = Pseudocall(Mutability.IMMUTABLE, listOf(receiverPseudoarg, valuePseudoarg))
+        val pseudocall = Pseudocall(Mutability.IMMUTABLE, listOfNotNull(receiverPseudoarg, valuePseudoarg))
 
         return context(input.regularStore, node.tree!!, node) {
             processPseudocall(pseudocall, input)
@@ -464,10 +468,26 @@ class BorroQTransfer(
         if (block is ExceptionBlock) inferFieldAccessMutabilityInBlock(node, block.successor!!)
 
         for (usageNode in block.nodes) {
-            if (usageNode.operands.contains(node)) when (usageNode) {
-                is ReturnNode -> signatureType.returnMutability
-                is MethodInvocationNode -> Mutability.IMMUTABLE // We don't use the value in method invocation, so we can just use immutable here
-                else -> TODO("Infer mutability from ${usageNode}")
+            if (usageNode.operands.contains(node)) {
+                val inferred = when (usageNode) {
+                    is ReturnNode -> signatureType.returnMutability
+                    is MethodInvocationNode -> Mutability.IMMUTABLE // We don't use the value in method invocation, so we can just use immutable here
+                    is AssignmentNode if usageNode.target is LocalVariableNode -> {
+                        (usageNode.target as LocalVariableNode).getTargetMutability()
+                    }
+
+                    is TypeCastNode -> {
+                        Mutability.fromAnnotations(annotationQuery.getTypeCastResultMutability(usageNode.tree!!))
+                    }
+
+                    else -> {
+                        logger.warn { "Infer mutability from ${usageNode}" }
+                        null
+                    }
+                }
+                if (inferred != null) {
+                    return inferred
+                }
             }
         }
 
@@ -479,9 +499,9 @@ class BorroQTransfer(
         inferFieldAccessMutabilityInBlock(node, node.block!!)
 
     private fun extractFieldPath(node: FieldAccessNode): Pair<Node, PathTail> {
-        fun extractFieldPathRec(node: FieldAccessNode) = when (val receiver = node.receiver) {
+        fun extractFieldPathRec(node: FieldAccessNode): Pair<Node, PathTail> = when (val receiver = node.receiver) {
             is FieldAccessNode -> {
-                val (base, path) = extractFieldPath(node)
+                val (base, path) = extractFieldPathRec(receiver)
                 base to path.with(node.element)
             }
 
@@ -510,7 +530,7 @@ class BorroQTransfer(
         val receiverArg = Pseudoarg(
             targetMutability,
             Scope(false, listOf(pathTail)),
-            Pseudoarg.BorrowTarget.PERSISTENT,
+            Pseudoarg.BorrowTarget.RETURN_VALUE,
             input.getValueOfSubNode(base)!!,
             base
         )

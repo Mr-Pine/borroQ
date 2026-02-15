@@ -1,3 +1,4 @@
+
 import de.mr_pine.borroq.BorroQChecker
 import org.checkerframework.framework.test.CheckerFrameworkPerFileTest
 import org.checkerframework.framework.test.TestRootDirectory
@@ -26,6 +27,6 @@ class BorroQTest(testFile: File) : CheckerFrameworkPerFileTest(
         @JvmStatic
         @get:Parameterized.Parameters
         val testFiles: List<File>
-            get() = listOf(File("src/test/java/testcases/borroq/ConstructorPerms.java"))
+            get() = listOf(File("src/test/java/testcases/borroq/CounterexampleDeletingBorrows.java"))
     }
 }

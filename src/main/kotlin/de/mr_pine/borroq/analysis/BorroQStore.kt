@@ -173,14 +173,14 @@ data class BorroQStore(
         val fraction = when (value) {
             is IdentifiedPermission -> value.fraction
             is BorroQValue.PseudocallResult -> value.permission.fraction
-            else -> throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
+            else -> throw InsufficientShallowPermissionException(node, permission)
         }
 
         val fractionEnough = when (permission) {
             ArgPermission.READABLE -> fraction > Rational.ZERO
             ArgPermission.MUTABLE -> fraction == Rational.ONE
         }
-        if (!fractionEnough) throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
+        if (!fractionEnough) throw InsufficientShallowPermissionException(node, permission)
 
         if (value is IdentifiedPermission) {
             val idFraction =
@@ -197,7 +197,7 @@ data class BorroQStore(
                 ArgPermission.READABLE -> borrowedFraction < idFraction
                 ArgPermission.MUTABLE -> borrowedFraction.isZero()
             }
-            if (!borrowsOk) throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
+            if (!borrowsOk) throw InsufficientShallowPermissionException(node, permission)
         }
     }
 

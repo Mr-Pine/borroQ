@@ -107,8 +107,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val mutability = Mutability.fromAnnotations(parameterAnnotations)
                 ?: throw IllegalStateException("No mutability specified")
             val scope = Scope.fromAnnotationsOnType(parameterAnnotations, elemParam.asType())
-                ?: DefaultInference.inferDefaultScope(parentElement.asType(),
-                    elements)
+                ?: DefaultInference.inferDefaultScope(
+                    parentElement.asType(),
+                    elements
+                )
             ParameterType(mutability, scope)
         }
         val signatureType = SignatureType(returnMutability, receiverType, parameterTypes)
@@ -167,8 +169,8 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         return SignatureType(returnMutability, receiverType, parameterTypes)
     }
 
-    fun getFieldMutability(field: VariableElement): Mutability? {
-        if (field.asType().kind.isPrimitive) return null // TODO: Ensure no annotation
+    fun getFieldMutability(field: VariableElement): Mutability {
+        if (field.asType().kind.isPrimitive) return Mutability.IMMUTABLE
         val fieldMutability = fieldCache.getOrPut(field) {
             val annotations = field.asType().annotationMirrors
             Mutability.fromAnnotations(annotations)

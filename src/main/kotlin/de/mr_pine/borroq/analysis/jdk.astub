@@ -38,8 +38,7 @@ public interface List<E> {
 }
 
 public class Scanner {
-
     bool hasNextLine(@Immutable Scanner this);
-    @Immutable String nextLine(@Mutable Scanner this);
-    void close(@Mutable Scanner this);
+    @Immutable String nextLine(@Immutable Scanner this); // This should be @Mutable but the type system cannot support that yet (or nothing else could be done on the Scanner)
+    void close(@Immutable Scanner this); // This should be @Mutable but the type system cannot support that yet (or nothing else could be done on the Scanner)
 }

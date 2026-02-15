@@ -31,9 +31,9 @@ public class CounterexampleDeletingBorrows {
         B extracted = a.b;
         Box extractedBox = extracted.x;
 
-        // :: error: permission.insufficient.shallow.borrowed
         Box differentExtractedBox = a.b.x;
 
+        // :: error: permission.insufficient.shallow
         extractedBox.value = 1;
 
         int val = differentExtractedBox.value;
