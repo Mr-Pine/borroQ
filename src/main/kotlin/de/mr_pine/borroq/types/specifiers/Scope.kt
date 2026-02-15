@@ -76,12 +76,11 @@ data class Scope(val includesBase: Boolean, val entries: List<PathTail>) {
 
         fun fromAnnotationsOnType(
             annotations: Collection<AnnotationMirror>,
-            type: TypeMirror,
-            elements: Elements
-        ): Scope {
+            type: TypeMirror
+        ): Scope? {
             val scopeAnnotation =
                 AnnotationUtils.getAnnotationByClass(annotations, de.mr_pine.borroq.qual.Scope::class.java)
-                    ?: return full(type, elements)
+                    ?: return null
 
             val pathTails = pathsFromAnnotationValueOnType(scopeAnnotation, type)
 

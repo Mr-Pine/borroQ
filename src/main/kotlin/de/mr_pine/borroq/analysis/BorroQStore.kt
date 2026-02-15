@@ -36,14 +36,9 @@ data class BorroQStore(
     private val borrowList: MutableList<Borrow>
 ) : Store<BorroQStore> {
 
-    override fun copy() =
-        BorroQStore(
-            checker,
-            configuration,
-            variablePermissions.toMutableMap(),
-            thisPermission,
-            borrowList.toMutableList()
-        )
+    override fun copy() = BorroQStore(
+        checker, configuration, variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList()
+    )
 
     fun createFreshId(variableNode: LocalVariableNode): Id {
         val name = variableNode.name.toString()
@@ -170,8 +165,39 @@ data class BorroQStore(
         }
     }
 
+    private fun ensureShallowPermission(permission: ArgPermission, node: Node, value: BorroQValue) {
+        val fraction = when (value) {
+            is IdentifiedPermission -> value.fraction
+            is BorroQValue.PseudocallResult -> value.permission.fraction
+            else -> throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
+        }
+
+        val fractionEnough = when (permission) {
+            ArgPermission.READABLE -> fraction > Rational.ZERO
+            ArgPermission.MUTABLE -> fraction == Rational.ONE
+        }
+        if (!fractionEnough) throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
+
+        if (value is IdentifiedPermission) {
+            val idFraction =
+                (variablePermissions.values + listOfNotNull(thisPermission)).filterIsInstance<IdentifiedPermission>()
+                    .filter { it.id == value.id }.map(IdentifiedPermission::fraction)
+                    .fold(Rational.ZERO, Rational::plus)
+            val borrowedFraction =
+                borrowList.filter { it.source.root == PathRoot.IdPathRoot(value.id) }.map { it.fraction }
+                    .fold(Rational.ZERO, Rational::plus)
+
+            val borrowsOk = when (permission) {
+                ArgPermission.READABLE -> borrowedFraction < idFraction
+                ArgPermission.MUTABLE -> borrowedFraction.isZero()
+            }
+            if (!borrowsOk) throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
+        }
+    }
+
     fun ensureDeepPermission(
-        permission: ArgPermission, value: BorroQValue,
+        permission: ArgPermission,
+        value: BorroQValue,
         node: Node,
         elements: Elements,
         memberTypeAnalysis: MemberTypeAnalysis
@@ -181,15 +207,9 @@ data class BorroQStore(
     }
 
     fun ensurePermissionOn(
-        permission: ArgPermission,
-        value: BorroQValue,
-        node: Node,
-        scope: Scope,
-        memberTypeAnalysis: MemberTypeAnalysis
+        permission: ArgPermission, value: BorroQValue, node: Node, scope: Scope, memberTypeAnalysis: MemberTypeAnalysis
     ) {
-        if (!value.hasShallowPermission(permission)) {
-            throw InsufficientShallowPermissionException(node, permission, value as VariablePermission)
-        }
+        ensureShallowPermission(permission, node, value)
 
         if (value !is IdentifiedPermission) {
             configuration.borroQExtensions.requireExtension(Extension.NESTED_FIELD_ACCESS, node.tree!!, checker)

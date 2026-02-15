@@ -90,8 +90,12 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val annotations = receiver.annotations.annotationElements(annotations)
             val mutability = Mutability.fromAnnotations(annotations)
                 ?: throw IllegalStateException("No mutability specified for receiver of ${callable.name.asString()}")
-            val scope = Scope.fromAnnotationsOnType(annotations, parentElement.asType(), elements)
-            SignatureType.ParameterType(mutability, scope)
+            val scope =
+                Scope.fromAnnotationsOnType(annotations, parentElement.asType()) ?: DefaultInference.inferDefaultScope(
+                    parentElement.asType(),
+                    elements
+                )
+            ParameterType(mutability, scope)
         } else {
             null
         }
@@ -102,8 +106,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val parameterAnnotations = stubParam.annotations.annotationElements(annotations)
             val mutability = Mutability.fromAnnotations(parameterAnnotations)
                 ?: throw IllegalStateException("No mutability specified")
-            val scope = Scope.fromAnnotationsOnType(parameterAnnotations, elemParam.asType(), elements)
-            SignatureType.ParameterType(mutability, scope)
+            val scope = Scope.fromAnnotationsOnType(parameterAnnotations, elemParam.asType())
+                ?: DefaultInference.inferDefaultScope(parentElement.asType(),
+                    elements)
+            ParameterType(mutability, scope)
         }
         val signatureType = SignatureType(returnMutability, receiverType, parameterTypes)
         signatureCache[element] = signatureType
@@ -138,7 +144,10 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
             val mutability = Mutability.fromAnnotations(typeAnnotations)
                 ?: DefaultInference.inferParameterMutability(executable.isConstructor)
-            val scope = Scope.fromAnnotationsOnType(typeAnnotations, argType, elements)
+            val scope = Scope.fromAnnotationsOnType(typeAnnotations, argType) ?: DefaultInference.inferDefaultScope(
+                argType,
+                elements
+            )
 
             ParameterType(mutability, scope)
         }
@@ -150,7 +159,7 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             val annotations = recvType?.annotationMirrors
             val mutability =
                 annotations?.let { Mutability.fromAnnotations(it) } ?: DefaultInference.inferReceiverMutability()
-            val scope = annotations?.let { Scope.fromAnnotationsOnType(it, recvType, elements) }
+            val scope = annotations?.let { Scope.fromAnnotationsOnType(it, recvType) }
                 ?: DefaultInference.inferDefaultScope(recvType, elements)
             ParameterType(mutability, scope)
         }

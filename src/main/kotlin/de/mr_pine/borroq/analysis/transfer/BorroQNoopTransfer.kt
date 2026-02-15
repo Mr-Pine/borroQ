@@ -6,6 +6,7 @@ import de.mr_pine.borroq.analysis.Configuration
 import de.mr_pine.borroq.analysis.livevariable.LiveVarNode
 import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.BorroQValue
+import de.mr_pine.borroq.types.Id
 import de.mr_pine.borroq.types.IdentifiedPermission
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.node.*
@@ -22,6 +23,19 @@ abstract class BorroQNoopTransfer(
     protected fun Node.regularResult(
         value: BorroQValue?, store: BorroQStore, storeChanged: Boolean = true
     ): RegularTransferResult<BorroQValue, BorroQStore> {
+
+        val isStatementExpression =
+            this.block?.successors.orEmpty().any { it.nodes.singleOrNull() is ExpressionStatementNode }
+        if (isStatementExpression && value is BorroQValue.PseudocallResult) {
+            val borrows =
+                value.attachedBorrows.map { it.toBorrow(Id("SHOULD_BE_DELETED", -1)) }.filter { it.target !is Id }
+            borrows.forEach(store::addBorrow)
+
+            if (borrows.isNotEmpty()) {
+                return regularResult(value.copy(attachedBorrows = emptyList()), store, storeChanged = true)
+            }
+        }
+
         fun toVariable(node: Node): LocalVariableNode? = when (node) {
             is FieldAccessNode -> toVariable(node.receiver)
             is LocalVariableNode -> node

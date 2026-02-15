@@ -170,7 +170,20 @@ class BorroQTransfer(
     data class Pseudocall(val returnMutability: Mutability, val arguments: List<Pseudoarg>)
 
     context(store: BorroQStore, tree: Tree)
-    private fun processPseudoarg(pseudoarg: Pseudoarg): List<BorroQValue.PseudocallResult.FreeBorrow> {
+    private fun processPseudoarg(pseudoarg: Pseudoarg, input: Input): List<BorroQValue.PseudocallResult.FreeBorrow> {
+        if (pseudoarg.node is FieldAccessNode) {
+            // We want to handle field access nodes directly, not through a PseudocallResult Value
+            val (base, path) = extractFieldPath(pseudoarg.node)
+
+            val scope = Scope(false, pseudoarg.scope.entries.map { PathTail(path.fields + it.fields) } + listOfNotNull(
+                PathTail(path.fields).takeIf { pseudoarg.scope.includesBase }
+            ))
+
+            val pseudoarg =
+                Pseudoarg(pseudoarg.mutability, scope, pseudoarg.borrowTarget, input.getValueOfSubNode(base)!!, base)
+            return processPseudoarg(pseudoarg, input)
+        }
+
         if (pseudoarg.node.type.kind.isPrimitive || pseudoarg.node.type.kind == TypeKind.VOID) return emptyList()
 
         val value = pseudoarg.argument
@@ -184,12 +197,8 @@ class BorroQTransfer(
         return buildList {
             val (sourceRoot, baseFraction) = if (value is IdentifiedPermission) {
                 PathRoot.IdPathRoot(value.id) to value.fraction
-            } else if (pseudoarg.node is FieldAccessNode) {
-                val (base, path) = extractFieldPath(pseudoarg.node)
-                when (base) {
-                    is ClassNameNode -> PathRoot.StaticPathRoot(base) to Mutability.IMMUTABLE.fraction
-                    else -> TODO("Unsupported base for field access")
-                }
+            } else if (pseudoarg.node is ClassNameNode) {
+                PathRoot.StaticPathRoot(pseudoarg.node) to Mutability.IMMUTABLE.fraction
             } else {
                 TODO("Unsupported pseudo argument: ${pseudoarg.node}")
             }
@@ -221,12 +230,13 @@ class BorroQTransfer(
 
     context(store: BorroQStore, tree: Tree, node: Node)
     private fun processPseudocall(
-        pseudocall: Pseudocall
+        pseudocall: Pseudocall,
+        input: Input
     ): RegularTransferResult<BorroQValue, BorroQStore> {
 
         val attachedBorrows = buildList {
             for (pseudoarg in pseudocall.arguments) {
-                addAll(processPseudoarg(pseudoarg))
+                addAll(processPseudoarg(pseudoarg, input))
             }
         }
 
@@ -271,7 +281,7 @@ class BorroQTransfer(
         val pseudocall = Pseudocall(methodType.returnMutability ?: Mutability.IMMUTABLE, arguments)
 
         return context(input.regularStore, node.tree!!, node) {
-            processPseudocall(pseudocall)
+            processPseudocall(pseudocall, input)
         }
     }
 
@@ -397,7 +407,7 @@ class BorroQTransfer(
         val pseudocall = Pseudocall(Mutability.IMMUTABLE, listOf(receiverPseudoarg, valuePseudoarg))
 
         return context(input.regularStore, node.tree!!, node) {
-            processPseudocall(pseudocall)
+            processPseudocall(pseudocall, input)
         }
     }
 
@@ -496,12 +506,12 @@ class BorroQTransfer(
             Scope(false, listOf(pathTail)),
             Pseudoarg.BorrowTarget.PERSISTENT,
             input.getValueOfSubNode(base)!!,
-            node
+            base
         )
         val pseudocall = Pseudocall(targetMutability, listOf(receiverArg))
 
         return context(input.regularStore, node.tree!!, node) {
-            processPseudocall(pseudocall)
+            processPseudocall(pseudocall, input)
         }
     }
 //endregion
@@ -598,7 +608,7 @@ class BorroQTransfer(
         val pseudocall = Pseudocall(Mutability.MUTABLE, pseudoargs)
 
         return context(input.regularStore, node.tree!!, node) {
-            processPseudocall(pseudocall)
+            processPseudocall(pseudocall, input)
         }
     }
 
@@ -631,7 +641,7 @@ class BorroQTransfer(
         val pseudocall = Pseudocall(componentMutability, listOf(arrayPseudoarg, indexPseudoarg))
 
         return context(input.regularStore, node.tree!!, node) {
-            processPseudocall(pseudocall)
+            processPseudocall(pseudocall, input)
         }
     }
 // endregion array stuff

@@ -1,14 +1,8 @@
 package de.mr_pine.borroq.types
 
-import de.mr_pine.borroq.types.specifiers.ArgPermission
 import de.mr_pine.borroq.types.specifiers.Mutability
 
 class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction), VariablePermission {
-
-    override fun hasShallowPermission(permission: ArgPermission) = when (permission) {
-        ArgPermission.READABLE -> fraction > Rational.ZERO
-        ArgPermission.MUTABLE -> fraction == Rational.ONE
-    }
 
     fun split(leftShallowMutability: Mutability): Pair<IdentifiedPermission, IdentifiedPermission> {
         return if (leftShallowMutability == Mutability.MUTABLE) {
