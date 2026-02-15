@@ -18,7 +18,6 @@ import de.mr_pine.borroq.types.specifiers.Scope
 import org.checkerframework.com.github.javaparser.ast.body.*
 import org.checkerframework.com.github.javaparser.ast.expr.AnnotationExpr
 import org.checkerframework.com.github.javaparser.ast.expr.MarkerAnnotationExpr
-import org.checkerframework.dataflow.cfg.node.MethodAccessNode
 import org.checkerframework.javacutil.AnnotationBuilder
 import org.checkerframework.javacutil.ElementUtils
 import javax.lang.model.element.*
@@ -39,27 +38,6 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
     fun getType(method: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
         return signatureCache.getOrPut(method, defaultValue = { calculateType(method, exceptionReportingContext) })
-    }
-
-    fun getType(methodAccess: MethodAccessNode, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
-        val unmappedMethodType = getType(methodAccess.method, exceptionReportingContext)
-        val methodTypeHasArguments = methodAccess.type != methodAccess.method.asType()
-        val receiverHasArguments =
-            !methodAccess.isStatic && !methodAccess.method.isConstructor && (methodAccess.receiver.type as Type.ClassType).baseType() != methodAccess.method.enclosingElement.asType()
-        return if (methodTypeHasArguments || receiverHasArguments) {
-            // TODO: This checks only the return type, input types could only be relaxed by type params, so they aren't that important
-            if (unmappedMethodType.returnMutability == null || methodAccess.method.isConstructor || methodAccess.method.returnType.kind.isPrimitive || methodAccess.method.returnType.kind == TypeKind.VOID) {
-                unmappedMethodType
-            } else {
-                val annotations = (methodAccess.type as Type.MethodType).restype.annotationMirrors
-                val mappedReturnMutability = Mutability.fromAnnotations(annotations)
-                    ?: throw IllegalStateException("No mutability specified")
-                val returnMutability = Mutability.lower(unmappedMethodType.returnMutability, mappedReturnMutability)
-                unmappedMethodType.copy(returnMutability = returnMutability)
-            }
-        } else {
-            unmappedMethodType
-        }
     }
 
     fun getType(callable: CallableDeclaration<*>, annotations: StubManager.ImportMap): SignatureType? {
@@ -192,8 +170,6 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             ?: throw IllegalStateException("Could not find field ${field.variables.single().nameAsString} in parent element $fqnParentName")
         val fieldMutability = fieldCache.getOrPut(fieldElement) {
             val annotations = field.annotations.annotationElements(importMap)
-            val fqTypeName = field.commonType.toClassOrInterfaceType().get().nameWithScope
-            val fieldTypeElement = elements.getTypeElement(fqTypeName)
             Mutability.fromAnnotations(annotations)
                 ?: throw IllegalStateException("No mutability for field $field specified")
         }

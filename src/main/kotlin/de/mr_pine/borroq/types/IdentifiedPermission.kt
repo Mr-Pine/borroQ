@@ -2,7 +2,7 @@ package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.types.specifiers.Mutability
 
-class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction), VariablePermission {
+class IdentifiedPermission(val fraction: Rational, val id: Id) : VariablePermission {
 
     fun split(leftShallowMutability: Mutability): Pair<IdentifiedPermission, IdentifiedPermission> {
         return if (leftShallowMutability == Mutability.MUTABLE) {
@@ -32,17 +32,13 @@ class IdentifiedPermission(fraction: Rational, val id: Id) : Permission(fraction
 
     override fun equals(other: Any?): Boolean {
         if (other !is IdentifiedPermission) return false
-        return super.equals(other) && return other.id == id
+        return fraction == other.fraction && return other.id == id
     }
 
     override fun hashCode(): Int {
         var result = super.hashCode()
         result = 31 * result + id.hashCode()
         return result
-    }
-
-    companion object {
-        fun Permission.withId(id: Id) = IdentifiedPermission(this.fraction, id)
     }
 }
 

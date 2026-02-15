@@ -5,5 +5,4 @@ import de.mr_pine.borroq.types.PathTail
 import de.mr_pine.borroq.types.specifiers.ArgPermission
 
 class InsufficientDeepPermissionException(path: PathTail, requiredPermission: ArgPermission) :
-    BorroQException(Messages.INSUFFICIENT_DEEP_PERMISSION, path.display(), requiredPermission.name) {
-}
+    BorroQException(Messages.INSUFFICIENT_DEEP_PERMISSION, path.display(), requiredPermission.name)

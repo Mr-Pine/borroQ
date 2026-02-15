@@ -7,7 +7,6 @@ import de.mr_pine.borroq.analysis.exceptions.InsufficientShallowPermissionExcept
 import de.mr_pine.borroq.analysis.transfer.BorroQTransfer.Pseudoarg.BorrowTarget
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.BorroQValue.FreePermission.FreeBorrow
-import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.ArgPermission
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.Scope
@@ -22,7 +21,6 @@ import org.checkerframework.dataflow.expression.LocalVariable
 import org.checkerframework.dataflow.expression.ThisReference
 import javax.lang.model.element.*
 import javax.lang.model.type.TypeMirror
-import javax.lang.model.util.Elements
 
 private val logger = KotlinLogging.logger { }
 
@@ -70,34 +68,6 @@ data class BorroQStore(
         variablePermissions[receiver] = existingPermission.recombineFractional(permission)
     }
 
-    fun recombineNodeOrThis(receiver: Node?, permission: VariablePermission) =
-        if (receiver != null) recombine(receiver, permission) else recombineThis(permission)
-
-    fun recombine(receiver: Node, permission: VariablePermission) {
-        require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
-        when (val expression = JavaExpression.fromNode(receiver)) {
-            is LocalVariable -> recombine(expression, permission)
-            is FieldAccess if Path.fromNode(receiver).isStatic -> {}
-            else -> TODO("Recombine receiver $expression of type ${expression.javaClass}")
-        }
-    }
-
-    fun recombineAny(permission: IdentifiedPermission) {
-        val receiver =
-            variablePermissions.filterValues { it is IdentifiedPermission && it.id == permission.id }.keys.firstOrNull()
-                ?: return
-        recombine(receiver, permission)
-    }
-
-    fun recombineThis(permission: VariablePermission) {
-        require(thisPermission is IdentifiedPermission) { "Cannot recombine with non-identified permission" }
-        require(permission is IdentifiedPermission) { "Cannot recombine non-identified permission" }
-        require((thisPermission as IdentifiedPermission).id == permission.id) {
-            "Cannot recombine permissions with different ids: $thisPermission, $permission"
-        }
-        thisPermission = (thisPermission as IdentifiedPermission).recombineFractional(permission)
-    }
-
     fun killVariable(liveVariable: Node) {
         when (val expression = JavaExpression.fromNode(liveVariable)) {
             is LocalVariable -> {
@@ -113,7 +83,7 @@ data class BorroQStore(
                         .filter { (key, _) -> key != expression }.filter { (_, value) -> value.id == id }
                         .map(Map.Entry<LocalVariable, IdentifiedPermission>::key)
                 val otherVariable = otherVariables.firstOrNull() ?: return
-                variablePermissions[expression] = Permission(Rational.ZERO).withId(id)
+                variablePermissions[expression] = IdentifiedPermission(Rational.ZERO, id)
                 recombine(otherVariable, permission)
             }
 
@@ -123,25 +93,15 @@ data class BorroQStore(
         }
     }
 
-    fun queryPermission(target: LocalVariable): VariablePermission? = variablePermissions[target]
-
     fun queryPermission(target: Node): VariablePermission? {
         return when (val expression = JavaExpression.fromNode(target)) {
-            is LocalVariable -> queryPermission(expression)
+            is LocalVariable -> variablePermissions[expression]
             is ThisReference -> thisPermission
             else -> TODO("Querying permission for $expression of type ${expression.javaClass} not yet supported")
         }
     }
 
     fun queryThisPermission(): VariablePermission? = thisPermission
-
-    fun localPermissionSum(id: Id) =
-        (variablePermissions.values + thisPermission).filterIsInstance<IdentifiedPermission>().filter { it.id == id }
-            .fold(
-                Rational.ZERO
-            ) { acc, v -> acc + v.fraction }
-
-    fun getBorrows(): List<Borrow> = borrowList
 
     fun addBorrow(borrow: Borrow) {
         borrowList.add(borrow)
@@ -171,7 +131,7 @@ data class BorroQStore(
     ) {
         val fraction = when (value) {
             is IdentifiedPermission -> value.fraction
-            is BorroQValue.FreePermission -> value.permission.fraction
+            is BorroQValue.FreePermission -> value.fraction
             else -> throw InsufficientShallowPermissionException(node, permission)
         }
 
@@ -198,18 +158,6 @@ data class BorroQStore(
             }
             if (!borrowsOk) throw InsufficientShallowPermissionException(node, permission)
         }
-    }
-
-    fun ensureDeepPermission(
-        permission: ArgPermission,
-        value: BorroQValue,
-        node: Node,
-        elements: Elements,
-        memberTypeAnalysis: MemberTypeAnalysis,
-        freeBorrows: List<FreeBorrow>
-    ) {
-        val fullScope = Scope.full(node.type, elements)
-        ensurePermissionOn(permission, value, node, fullScope, memberTypeAnalysis, freeBorrows)
     }
 
     fun ensurePermissionOn(
@@ -364,9 +312,10 @@ data class BorroQStore(
 
             override fun <A : Annotation?> getAnnotation(p0: Class<A?>): A? = null
 
-            override fun <A : Annotation?> getAnnotationsByType(p0: Class<A?>): Array<out A?> = emptyArray<Annotation?>() as Array<out A?>
+            override fun <A : Annotation?> getAnnotationsByType(p0: Class<A?>): Array<out A?> =
+                emptyArray<Annotation?>() as Array<out A?>
 
-            override fun <R : Any?, P : Any?> accept(
+            override fun <R, P> accept(
                 p0: ElementVisitor<R?, P?>,
                 p1: P?
             ): R? {

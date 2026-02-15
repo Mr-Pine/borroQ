@@ -15,7 +15,6 @@ import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.BorroQValue.FreePermission.FreeBorrow
-import de.mr_pine.borroq.types.IdentifiedPermission.Companion.withId
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.Scope
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -43,7 +42,7 @@ private val logger = KotlinLogging.logger { }
 class BorroQTransfer(
     private val signatureType: SignatureType,
     private val memberTypeAnalysis: de.mr_pine.borroq.analysis.MemberTypeAnalysis,
-    private val liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
+    liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
     private val checker: BorroQChecker,
     private val annotationQuery: de.mr_pine.borroq.analysis.AnnotationQuery,
     private val configuration: de.mr_pine.borroq.analysis.Configuration
@@ -101,11 +100,11 @@ class BorroQTransfer(
         }
 
         val parameterPermissions = parameters.zip(signatureType.parameters).mapNotNull { (parameter, parameterType) ->
-            val permission = Permission((parameterType ?: return@mapNotNull null).mutability.fraction)
+            val fraction = (parameterType ?: return@mapNotNull null).mutability.fraction
             val localVariable = JavaExpression.fromNode(parameter) as LocalVariable
             val id = parameterIds[parameter]!!
 
-            localVariable to (permission.withId(id) as VariablePermission)
+            localVariable to (IdentifiedPermission(fraction, id) as VariablePermission)
         }.toMap().toMutableMap()
 
         fun borrowsFromScope(id: Id, scope: Scope, type: TypeMirror, source: Tree): List<Borrow> {
@@ -174,6 +173,7 @@ class BorroQTransfer(
     private fun processPseudoarg(
         pseudoarg: Pseudoarg, input: Input, additionalBorrows: List<FreeBorrow>
     ): List<FreeBorrow> {
+
         if (pseudoarg.node is FieldAccessNode) {
             // We want to handle field access nodes directly, not through a PseudocallResult Value
             val (base, path) = extractFieldPath(pseudoarg.node)
@@ -254,7 +254,7 @@ class BorroQTransfer(
             }
         }
 
-        val result = BorroQValue.FreePermission(Permission(pseudocall.returnMutability.fraction), attachedBorrows)
+        val result = BorroQValue.FreePermission(pseudocall.returnMutability.fraction, attachedBorrows)
         return node.regularResult(result, store, storeChanged = true)
     }
 
@@ -337,7 +337,7 @@ class BorroQTransfer(
             input.getValueOfSubNode(node.expression) ?: return node.regularResult(null, input.regularStore, false)) {
             // The right hand side is a pseudocall
             is BorroQValue.FreePermission -> {
-                if (targetMutability != null && rhsValue.permission.fraction < targetMutability.fraction) silentExceptionReportContext(
+                if (targetMutability != null && rhsValue.fraction < targetMutability.fraction) silentExceptionReportContext(
                     node.expression.tree!!
                 ) {
                     throw InsufficientShallowAssignmentExpressionPermissionException(
@@ -345,7 +345,7 @@ class BorroQTransfer(
                     )
                 }
 
-                val newFraction = targetMutability?.fraction ?: rhsValue.permission.fraction
+                val newFraction = targetMutability?.fraction ?: rhsValue.fraction
 
                 val store = input.regularStore
                 val targetId = store.createFreshId(target)
@@ -493,7 +493,7 @@ class BorroQTransfer(
                     }
 
                     else -> {
-                        logger.warn { "Infer mutability from ${usageNode}" }
+                        logger.warn { "Infer mutability from $usageNode" }
                         null
                     }
                 }
@@ -564,7 +564,7 @@ class BorroQTransfer(
     ): Result {
         require(!input.containsTwoStores()) { "Local variable node $node has two stores" }
         val permission = if (node.type.kind.isPrimitive) BorroQValue.FreePermission(
-            Permission(Mutability.IMMUTABLE.fraction),
+            Mutability.IMMUTABLE.fraction,
             emptyList()
         ) else input.regularStore.queryPermission(node)
         return node.regularResult(permission, input.regularStore, false)
@@ -614,7 +614,7 @@ class BorroQTransfer(
         node: ClassNameNode, input: Input
     ): Result {
         return node.regularResult(
-            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), emptyList()), input.regularStore
+            BorroQValue.FreePermission(Mutability.IMMUTABLE.fraction, emptyList()), input.regularStore
         )
     }
 
@@ -622,7 +622,7 @@ class BorroQTransfer(
         node: StringLiteralNode, input: Input
     ): Result {
         return node.regularResult(
-            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), emptyList()), input.regularStore
+            BorroQValue.FreePermission(Mutability.IMMUTABLE.fraction, emptyList()), input.regularStore
         )
     }
 
@@ -631,7 +631,7 @@ class BorroQTransfer(
             configuration.borroQExtensions.requireExtension(Extension.ALL_PRIMITIVES, node, checker)
         }
         return node.regularResult(
-            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), emptyList()), p.regularStore
+            BorroQValue.FreePermission(Mutability.IMMUTABLE.fraction, emptyList()), p.regularStore
         )
     }
 

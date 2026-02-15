@@ -8,7 +8,7 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
         TODO("Not yet implemented")
     }
 
-    data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
+    data class FreePermission(val fraction: Rational, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
 
         data class FreeBorrow(
             val source: Path,
@@ -21,6 +21,4 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
             }
         }
     }
-
-    data class FieldAccess(val access: Path, val fieldPermission: Permission) : BorroQValue
 }

@@ -48,7 +48,7 @@ class BorroQVisitor(
 
         val methodElement = (tree as JCTree.JCMethodDecl).sym
         val memberTypeAnalysis = MemberTypeAnalysis(checker)
-        val signatureType = memberTypeAnalysis.getType(methodElement, {
+        val signatureType = memberTypeAnalysis.getType(methodElement, exceptionReportingContext = {
             try {
                 it()
             } catch (e: BorroQException) {

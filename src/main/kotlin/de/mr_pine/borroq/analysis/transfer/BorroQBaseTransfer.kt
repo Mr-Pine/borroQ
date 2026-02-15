@@ -8,7 +8,6 @@ import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.types.BorroQValue
 import de.mr_pine.borroq.types.Id
 import de.mr_pine.borroq.types.IdentifiedPermission
-import de.mr_pine.borroq.types.Permission
 import de.mr_pine.borroq.types.specifiers.Mutability
 import org.checkerframework.dataflow.analysis.*
 import org.checkerframework.dataflow.cfg.node.*
@@ -82,7 +81,7 @@ abstract class BorroQBaseTransfer(
         val freeBorrows = operandResults.filterIsInstance<BorroQValue.FreePermission>()
             .flatMap { it.attachedBorrows }
         return node.regularResult(
-            BorroQValue.FreePermission(Permission(Mutability.IMMUTABLE.fraction), freeBorrows),
+            BorroQValue.FreePermission(Mutability.IMMUTABLE.fraction, freeBorrows),
             input.regularStore,
             false
         )

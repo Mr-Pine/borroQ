@@ -42,11 +42,5 @@ enum class Mutability {
             }
         }
 
-        fun lower(first: Mutability, second: Mutability): Mutability {
-            return when {
-                first == MUTABLE && second == MUTABLE -> MUTABLE
-                else -> IMMUTABLE
-            }
-        }
     }
 }

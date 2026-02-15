@@ -11,7 +11,6 @@ import de.mr_pine.borroq.types.specifiers.Scope
 data class SignatureType(
     val returnMutability: Mutability?, val receiverType: ParameterType?, val parameters: List<ParameterType?>
 ) {
-    data class ParameterType(val mutability: Mutability, val scope: Scope) {
-    }
+    data class ParameterType(val mutability: Mutability, val scope: Scope)
 }
 

@@ -1,8 +1,6 @@
 package de.mr_pine.borroq.analysis
 
 import de.mr_pine.borroq.types.BorroQValue
-import de.mr_pine.borroq.types.Rational
-import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.Mutability.IMMUTABLE
 import de.mr_pine.borroq.types.specifiers.Mutability.MUTABLE
 import de.mr_pine.borroq.types.specifiers.Scope
@@ -10,13 +8,7 @@ import javax.lang.model.type.TypeMirror
 import javax.lang.model.util.Elements
 
 object DefaultInference {
-    fun inferVariableMutability(assignedValue: BorroQValue): Mutability {
-        return when (assignedValue) {
-            is BorroQValue.FieldAccess if assignedValue.fieldPermission.fraction == Rational.ONE -> MUTABLE
-
-            else -> IMMUTABLE
-        }
-    }
+    fun inferVariableMutability(assignedValue: BorroQValue) = IMMUTABLE
 
     fun inferFieldMutability() = IMMUTABLE
 
