@@ -678,7 +678,7 @@ class BorroQTransfer(
 
         val arrayScope = Scope(false, listOf(PathTail(listOf(ArrayValuesVirtualField(componentType)))))
         val arrayPseudoarg = Pseudoarg(
-            Mutability.IMMUTABLE,
+            componentMutability,
             arrayScope,
             Pseudoarg.BorrowTarget.RETURN_VALUE,
             input.getValueOfSubNode(node.array)!!,
