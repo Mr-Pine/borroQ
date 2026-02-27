@@ -47,8 +47,12 @@ abstract class BorroQBaseTransfer(
         fun Set<LiveVarNode>?.liveVariables() =
             orEmpty().asSequence().mapNotNull { toVariable(it.liveVariable) }.toSet()
 
-        val diedVariables =
-            liveness.getStoreBefore(this)?.liveVariables.liveVariables() - liveness.getStoreAfter(this)?.liveVariables.liveVariables()
+        val liveBefore = liveness.getStoreBefore(this)?.liveVariables.liveVariables()
+        val liveAfter = liveness.getStoreAfter(this)?.liveVariables.liveVariables()
+        val unusedTarget =
+            (this as? AssignmentNode)?.let { it.target as? LocalVariableNode }?.takeIf { it !in liveAfter }
+
+        val diedVariables = liveBefore - liveAfter + setOfNotNull(unusedTarget)
 
 
         for (variable in diedVariables) {
