@@ -523,7 +523,7 @@ class BorroQTransfer(
 
             is ArrayAccessNode -> {
                 val elementType = receiver.array.annotatedType.let { it as ArrayType }.componentType
-                receiver.array to PathTail(listOf(ArrayValuesVirtualField(elementType)))
+                receiver.array to PathTail(listOf(ArrayValuesVirtualField(elementType), node.element))
             }
 
             else -> TODO("Extract field path for $receiver")
@@ -661,6 +661,12 @@ class BorroQTransfer(
         node: ArrayAccessNode, input: Input
     ): Result {
         configuration.borroQExtensions.requireExtension(Extension.ARRAYS, node, checker)
+
+        val isFieldAccessChild = (node.block as? ExceptionBlock)?.successor?.nodes?.filterIsInstance<FieldAccessNode>()
+            ?.any { it.receiver == node } == true
+        if (isFieldAccessChild) {
+            return node.regularResult(null, input.regularStore, false)
+        }
 
         val componentType = node.array.annotatedType.let { it as ArrayType }.componentType
 

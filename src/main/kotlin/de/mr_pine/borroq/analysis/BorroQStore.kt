@@ -44,7 +44,7 @@ data class BorroQStore(
 
     fun createFreshId(variableNode: LocalVariableNode): Id {
         val name = variableNode.name.toString()
-        val nonce = variableNode.hashCode()
+        val nonce = variableNode.tree.hashCode()
 
         return Id(name, nonce)
     }

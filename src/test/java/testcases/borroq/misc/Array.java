@@ -1,4 +1,4 @@
-package testcases.borroq.eval;
+package testcases.borroq.misc;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
 

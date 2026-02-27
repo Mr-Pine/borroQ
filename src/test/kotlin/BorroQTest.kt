@@ -17,16 +17,16 @@ class BorroQTest(testFile: File) : CheckerFrameworkPerFileTest(
     "-nowarn"
 ) {
     companion object {
-        @Suppress("unused")
-        @JvmStatic
-        @get:Parameterized.Parameters
-        val testDirs: Array<String?>
-            get() = arrayOf("borroq")
-
         /*@Suppress("unused")
         @JvmStatic
         @get:Parameterized.Parameters
+        val testDirs: Array<String?>
+            get() = arrayOf("borroq")*/
+
+        @Suppress("unused")
+        @JvmStatic
+        @get:Parameterized.Parameters
         val testFiles: List<File>
-            get() = listOf(File("src/test/java/testcases/borroq/ArgumentPermissionChaining.java"))*/
+            get() = listOf(File("src/test/java/testcases/borroq/Evaluation.java"))
     }
 }
