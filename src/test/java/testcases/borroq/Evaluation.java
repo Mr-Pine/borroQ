@@ -41,15 +41,31 @@ public interface Evaluation {
     }
 
     static void fieldAccess(@Mutable A a) {
-        @Mutable Object x = a.x;
+        Object x = a.x;
         Object y = a.y;
         use(x);
         use(y);
-        use(a);
+        useA(a);
         a = new @Mutable A();
         x = a.x;
         y = a.y;
-        useMut(a);
+        useMutA(a);
+    }
+
+    class C {
+        @Mutable A a1;
+        @Mutable A a2;
+
+        void useMut(@Mutable C this) {
+        }
+    }
+
+    static void fieldAssignment(@Mutable C c) {
+        @Mutable C c2 = c;
+        c2.a1.x = new Object();
+        @Mutable A a = c.a2;
+        a.x = new Object();
+        c.useMut();
     }
 
     static void parallelGetters(@Mutable A a) {

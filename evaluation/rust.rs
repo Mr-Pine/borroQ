@@ -45,6 +45,19 @@ fn field_access(a: &mut A) {
     use_immut(a);
 }
 
+struct C {
+    a1: A,
+    a2: A
+}
+
+fn field_assignment(c: &mut C) {
+    let c2 = &mut *c;
+    c2.a1.x = Box::new(2);
+    let a = &mut c.a2;
+    a.x = Box::new(3);
+    use_mut(c);
+}
+
 /*fn parallel_getters(a: &mut A) {
     let x = a.get_x();
     let y = a.get_y();
