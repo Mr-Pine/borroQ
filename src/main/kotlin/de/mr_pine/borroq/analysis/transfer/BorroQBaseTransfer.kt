@@ -18,7 +18,7 @@ typealias Input = TransferInput<BorroQValue, BorroQStore>
 
 abstract class BorroQBaseTransfer(
     private val liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
-    private val checker: BorroQChecker,
+    protected val checker: BorroQChecker,
     private val configuration: Configuration
 ) : AbstractNodeVisitor<Result, Input>(), ForwardTransferFunction<BorroQValue, BorroQStore> {
 

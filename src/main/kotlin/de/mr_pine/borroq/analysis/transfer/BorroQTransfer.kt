@@ -43,7 +43,7 @@ class BorroQTransfer(
     private val signatureType: SignatureType,
     private val memberTypeAnalysis: de.mr_pine.borroq.analysis.MemberTypeAnalysis,
     liveness: AnalysisResult<UnusedAbstractValue, LiveVarStore>,
-    private val checker: BorroQChecker,
+    checker: BorroQChecker,
     private val annotationQuery: de.mr_pine.borroq.analysis.AnnotationQuery,
     private val configuration: de.mr_pine.borroq.analysis.Configuration
 ) : BorroQBaseTransfer(liveness, checker, configuration) {
@@ -146,13 +146,6 @@ class BorroQTransfer(
             thisPermission,
             (parameterBorrows + thisBorrows).toMutableList()
         )
-    }
-
-    override fun visitNode(
-        node: Node, p: Input
-    ): Result {
-        configuration.unknownSyntaxStrictness.reportUnknownSyntaxStrictness(checker, node)
-        return node.regularResult(null, p.regularStore, false)
     }
 
     data class Pseudoarg(
@@ -526,6 +519,10 @@ class BorroQTransfer(
                 receiver.array to PathTail(listOf(ArrayValuesVirtualField(elementType), node.element))
             }
 
+            is TypeCastNode if receiver.operand is LocalVariableNode -> {
+                receiver.operand to PathTail(node.element)
+            }
+
             else -> TODO("Extract field path for $receiver")
         }
 
@@ -706,7 +703,9 @@ class BorroQTransfer(
     override fun visitTypeCast(
         n: TypeCastNode, p: Input
     ): Result {
-        if (n.type.kind.isPrimitive) {
+        val isPrimitive = n.type.kind.isPrimitive
+        val isPlain = checker.typeUtils.stripAnnotations(n.type) == n.type && n.type.kind == TypeKind.DECLARED
+        if (isPrimitive || isPlain) {
             return propagateFreeBorrowsImmutable(n, p)
         }
         return visitNode(n, p)
