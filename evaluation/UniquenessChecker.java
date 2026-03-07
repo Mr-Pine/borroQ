@@ -1,4 +1,6 @@
+import edu.kit.kastel.property.packing.qual.EnsuresUnknownInit;
 import edu.kit.kastel.property.subchecker.exclusivity.qual.EnsuresMaybeAliased;
+import edu.kit.kastel.property.subchecker.exclusivity.qual.EnsuresReadOnly;
 import edu.kit.kastel.property.subchecker.exclusivity.qual.MaybeAliased;
 import edu.kit.kastel.property.subchecker.exclusivity.qual.Unique;
 
@@ -30,6 +32,7 @@ public interface UniquenessChecker {
             this.y = new Object();
         }
 
+        @EnsuresUnknownInit(targetValue = Object.class)
         @Unique
         Object getX(@Unique A this) {
             return x;
@@ -40,17 +43,18 @@ public interface UniquenessChecker {
             return y;
         }
 
+        @EnsuresReadOnly("#1")
         void setX(@Unique A this, @Unique Object x) {
             this.x = x;
         }
     }
 
+    @EnsuresMaybeAliased("#1")
     static void fieldAccess(@Unique A a) {
-        Object x = a.x;
+        @Unique Object x = a.x;
         Object y = a.y;
-        use(x);
+        useMut(x);
         use(y);
-        use(a);
         @Unique A a2 = new @Unique A();
         x = a2.x;
         y = a2.y;
@@ -60,6 +64,11 @@ public interface UniquenessChecker {
     class C {
         @Unique A a1;
         @Unique A a2;
+
+        C() {
+            this.a1 = new A();
+            this.a2 = new A();
+        }
 
         void useMut(@Unique C this) {
         }
@@ -81,6 +90,35 @@ public interface UniquenessChecker {
         use(y);
     }
 
+    static void parallelGettersCounterExample() {
+        class X {
+            String value;
+
+            X(String value) {
+                this.value = value;
+            }
+
+            @Override
+            public String toString() {
+                return value;
+            }
+        }
+        X xValue = new X("Hello");
+
+        @Unique A a = new A();
+        a.x = xValue;
+        @Unique Object x1 = a.getX();
+        @MaybeAliased Object x2 = a.getX();
+
+        System.out.println(x2);
+        ((X) x1).value = "World";
+        System.out.println(x2);
+    }
+
+    static void main(String[] args) {
+        parallelGettersCounterExample();
+    }
+
     class B {
         A a;
 
@@ -96,9 +134,14 @@ public interface UniquenessChecker {
         use(y);
     }
 
+    @EnsuresMaybeAliased("#1")
     static void setters(@Unique A a) {
         a.setX(new Object());
         use(a);
+    }
+
+    static void print(@MaybeAliased Object o) {
+        System.out.println(o);
     }
 
     // Note: Arrays are ignored by the uniqueness checker
@@ -118,11 +161,13 @@ public interface UniquenessChecker {
         use(y);
     }
 
+    @EnsuresMaybeAliased("#1")
     static void func(@Unique A a, @Unique B b, Object y) {
         a.y = y;
         b.a = a;
     }
 
+    @EnsuresMaybeAliased("#1")
     static void callFunc(@Unique A a, @Unique B b) {
         func(a, b, new Object());
         use(a);

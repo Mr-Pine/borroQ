@@ -40,9 +40,9 @@ impl A {
 fn field_access(a: &mut A) {
     let x = &mut a.x;
     let y = &a.y;
-    use_immut(x);
+    use_mut(x);
     use_immut(y);
-    use_immut(a);
+    use_mut(a);
 }
 
 struct C {

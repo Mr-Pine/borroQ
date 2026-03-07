@@ -41,11 +41,10 @@ public interface Evaluation {
     }
 
     static void fieldAccess(@Mutable A a) {
-        Object x = a.x;
-        Object y = a.y;
-        use(x);
+        @Mutable Object x = a.x;
+        @Immutable Object y = a.y;
+        useMut(x);
         use(y);
-        useA(a);
         a = new @Mutable A();
         x = a.x;
         y = a.y;
@@ -73,6 +72,32 @@ public interface Evaluation {
         Object y = a.getY();
         useMut(x);
         use(y);
+    }
+
+    class X {
+        String value;
+
+        X(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
+    }
+    static void uniquenessCheckerCounterExample() {
+        X xValue = new X("Hello");
+
+        @Mutable A a = new A();
+        a.x = xValue;
+        @Mutable Object x1 = a.getX();
+        // :: error: permission.insufficient.deep
+        @Immutable Object x2 = a.getX();
+
+        System.out.println(x2);
+        ((X) x1).value = "World";
+        System.out.println(x2);
     }
 
     class B {
