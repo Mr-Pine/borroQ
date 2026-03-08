@@ -12,15 +12,14 @@ import de.mr_pine.borroq.analysis.stub.StubManager.StubOptions.Companion.stubOpt
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.isStatic
 import de.mr_pine.borroq.types.SignatureType
+import de.mr_pine.borroq.types.SignatureType.ParameterType
 import de.mr_pine.borroq.types.specifiers.Mutability
-import de.mr_pine.borroq.types.specifiers.ReleaseMode
+import de.mr_pine.borroq.types.specifiers.Scope
 import org.checkerframework.com.github.javaparser.ast.body.*
 import org.checkerframework.com.github.javaparser.ast.expr.AnnotationExpr
 import org.checkerframework.com.github.javaparser.ast.expr.MarkerAnnotationExpr
-import org.checkerframework.dataflow.cfg.node.MethodAccessNode
 import org.checkerframework.javacutil.AnnotationBuilder
 import org.checkerframework.javacutil.ElementUtils
-import org.checkerframework.javacutil.TypesUtils
 import javax.lang.model.element.*
 import javax.lang.model.type.TypeKind
 import kotlin.jvm.optionals.getOrNull
@@ -39,28 +38,6 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
 
     fun getType(method: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
         return signatureCache.getOrPut(method, defaultValue = { calculateType(method, exceptionReportingContext) })
-    }
-
-    fun getType(methodAccess: MethodAccessNode, exceptionReportingContext: (() -> Unit) -> Unit): SignatureType {
-        val unmappedMethodType = getType(methodAccess.method, exceptionReportingContext)
-        val methodTypeHasArguments = methodAccess.type != methodAccess.method.asType()
-        val receiverHasArguments =
-            !methodAccess.isStatic && !methodAccess.method.isConstructor && (methodAccess.receiver.type as Type.ClassType).baseType() != methodAccess.method.enclosingElement.asType()
-        return if (methodTypeHasArguments || receiverHasArguments) {
-            // TODO: This checks only the return type, input types could only be relaxed by type params, so they aren't that important
-            if (unmappedMethodType.returnMutability == null || methodAccess.method.isConstructor || methodAccess.method.returnType.kind.isPrimitive || methodAccess.method.returnType.kind == TypeKind.VOID) {
-                unmappedMethodType
-            } else {
-                val annotations = (methodAccess.type as Type.MethodType).restype.annotationMirrors
-                val mappedReturnMutability = Mutability.fromAnnotationsOnType(annotations, null)
-                    ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                    ?: throw IllegalStateException("No mutability specified")
-                val returnMutability = Mutability.lower(unmappedMethodType.returnMutability, mappedReturnMutability)
-                unmappedMethodType.copy(returnMutability = returnMutability)
-            }
-        } else {
-            unmappedMethodType
-        }
     }
 
     fun getType(callable: CallableDeclaration<*>, annotations: StubManager.ImportMap): SignatureType? {
@@ -83,35 +60,36 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
         val element = identicalSimpleCallable.firstOrNull() ?: return null // No matching constructor found
 
         val returnAnnotations = callable.annotations.annotationElements(annotations)
-        val returnMutability = Mutability.fromAnnotationsOnType(returnAnnotations, parentElement)
-        require(returnMutability?.onPaths == null) { "Return mutability annotation cannot be restricted on paths" }
+        val returnMutability = Mutability.fromAnnotations(returnAnnotations)
 
         val receiverType = if (!callable.isStatic && !callable.isConstructorDeclaration) {
             val receiver =
                 callable.receiverParameter.getOrNull() ?: throw IllegalStateException("No receiver parameter specified")
             val annotations = receiver.annotations.annotationElements(annotations)
-            val mutability =
-                Mutability.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: throw IllegalStateException("No mutability specified for receiver of ${callable.name.asString()}")
-            val releaseMode =
-                ReleaseMode.fromAnnotationsOnType(annotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: throw IllegalStateException("No release mode specified for receiver of ${callable.name.asString()}")
-            SignatureType.ParameterType(mutability, releaseMode)
+            val mutability = Mutability.fromAnnotations(annotations)
+                ?: throw IllegalStateException("No mutability specified for receiver of ${callable.name.asString()}")
+            val scope =
+                Scope.fromAnnotationsOnType(annotations, parentElement.asType()) ?: DefaultInference.inferDefaultScope(
+                    parentElement.asType(),
+                    elements
+                )
+            ParameterType(mutability, scope)
         } else {
             null
         }
 
-        val parameterTypes = callable.parameters.map {
-            if (it.type.isPrimitiveType) return@map null
+        val parameterTypes = callable.parameters.zip(element.parameters).map { (stubParam, elemParam) ->
+            if (stubParam.type.isPrimitiveType) return@map null
 
-            val parameterAnnotations = it.annotations.annotationElements(annotations)
-            val mutability =
-                Mutability.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: throw IllegalStateException("No mutability specified")
-            val releaseMode =
-                ReleaseMode.fromAnnotationsOnType(parameterAnnotations, parentElement)?.also { it.checkForConflicts() }
-                    ?: throw IllegalStateException("No release mode specified")
-            SignatureType.ParameterType(mutability, releaseMode)
+            val parameterAnnotations = stubParam.annotations.annotationElements(annotations)
+            val mutability = Mutability.fromAnnotations(parameterAnnotations)
+                ?: throw IllegalStateException("No mutability specified")
+            val scope = Scope.fromAnnotationsOnType(parameterAnnotations, elemParam.asType())
+                ?: DefaultInference.inferDefaultScope(
+                    parentElement.asType(),
+                    elements
+                )
+            ParameterType(mutability, scope)
         }
         val signatureType = SignatureType(returnMutability, receiverType, parameterTypes)
         signatureCache[element] = signatureType
@@ -119,24 +97,23 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
     }
 
     private fun calculateType(
-        methodType: Type.MethodType,
-        methodName: String,
-        isConstructor: Boolean,
-        constructorTypeAnnotations: Collection<AnnotationMirror>?,
-        isStatic: Boolean,
-        exceptionReportingContext: (() -> Unit) -> Unit
+        executable: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit
     ): SignatureType {
-        val returnMutability = if (isConstructor) {
-            Mutability.fromAnnotationsOnType(constructorTypeAnnotations!!, null)
-                ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: DefaultInference.inferConstructorReturnMutability()
+        val methodType = executable.asType() as Type.MethodType
+        executable.simpleName.toString()
+
+        val returnMutability = if (executable.isConstructor) {
+            Mutability.fromAnnotations(
+                (if (executable.isConstructor) {
+                    (executable as Symbol).rawTypeAttributes.filter { it.position.type == TargetType.METHOD_RETURN }
+                } else null)!!)
+                ?: DefaultInference.inferReturnMutability(true)
         } else if (methodType.restype.kind.isPrimitive || methodType.restype.kind == TypeKind.VOID) {
             null
         } else {
             val annotations = methodType.restype.annotationMirrors
-            Mutability.fromAnnotationsOnType(annotations, null)
-                ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: DefaultInference.inferReturnMutability()
+            Mutability.fromAnnotations(annotations)
+                ?: DefaultInference.inferReturnMutability(false)
         }
 
         val parameterTypes = methodType.argtypes.toList().map { argType ->
@@ -145,65 +122,40 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             }
             val typeAnnotations = argType.annotationMirrors
 
-            val baseTypeElement = TypesUtils.getTypeElement(argType)
+            val mutability = Mutability.fromAnnotations(typeAnnotations)
+                ?: DefaultInference.inferParameterMutability(executable.isConstructor)
+            val scope = Scope.fromAnnotationsOnType(typeAnnotations, argType) ?: DefaultInference.inferDefaultScope(
+                argType,
+                elements
+            )
 
-            val mutability = Mutability.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
-                ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: DefaultInference.inferParameterMutability(isConstructor)
-            val releaseMode = ReleaseMode.fromAnnotationsOnType(typeAnnotations, baseTypeElement)
-                ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                ?: DefaultInference.inferParameterReleaseMode(isConstructor)
-
-            SignatureType.ParameterType(mutability, releaseMode)
+            ParameterType(mutability, scope)
         }
 
-        val receiverType = if (isStatic || isConstructor) {
+        val receiverType = if (executable.isStatic || executable.isConstructor) {
             null
         } else {
-            val recvType = methodType.recvtype
-            val (receiverMutability, receiverReleaseMode) = if (recvType != null) {
-                val baseTypeElement = TypesUtils.getTypeElement(recvType)
-                val receiverMutability = Mutability.fromAnnotationsOnType(
-                    recvType.annotationMirrors, baseTypeElement
-                )?.also { exceptionReportingContext { it.checkForConflicts() } }
-                val receiverReleaseMode = ReleaseMode.fromAnnotationsOnType(recvType.annotationMirrors, baseTypeElement)
-                    ?.also { exceptionReportingContext { it.checkForConflicts() } }
-                receiverMutability to receiverReleaseMode
-            } else {
-                null to null
-            }
-            val mutability = receiverMutability ?: DefaultInference.inferReceiverMutability()
-            val releaseMode = receiverReleaseMode ?: DefaultInference.inferReceiverReleaseMode()
-            SignatureType.ParameterType(mutability, releaseMode)
+            val recvType = methodType.recvtype ?: executable.enclosingElement.asType()
+            val annotations = recvType?.annotationMirrors
+            val mutability =
+                annotations?.let { Mutability.fromAnnotations(it) } ?: DefaultInference.inferReceiverMutability()
+            val scope = annotations?.let { Scope.fromAnnotationsOnType(it, recvType) }
+                ?: DefaultInference.inferDefaultScope(recvType, elements)
+            ParameterType(mutability, scope)
         }
 
         return SignatureType(returnMutability, receiverType, parameterTypes)
     }
 
-    private fun calculateType(
-        executable: ExecutableElement, exceptionReportingContext: (() -> Unit) -> Unit
-    ): SignatureType {
-        return calculateType(
-            executable.asType() as Type.MethodType,
-            executable.simpleName.toString(),
-            executable.isConstructor,
-            if (executable.isConstructor) {
-                (executable as Symbol).rawTypeAttributes.filter { it.position.type == TargetType.METHOD_RETURN }
-            } else null,
-            executable.isStatic,
-            exceptionReportingContext)
-    }
-
-    fun getFieldMutability(field: VariableElement): Mutability? {
-        if (field.asType().kind.isPrimitive) return null // TODO: Ensure no annotation
+    fun getFieldMutability(field: VariableElement): Mutability {
+        if (field.asType().kind.isPrimitive) return Mutability.IMMUTABLE
         val fieldMutability = fieldCache.getOrPut(field) {
             val annotations = field.asType().annotationMirrors
-            Mutability.fromAnnotationsOnType(annotations, TypesUtils.getTypeElement(field.asType()))
-                ?: throw IllegalStateException("No mutability for field ${field.simpleName} specified")
+            Mutability.fromAnnotations(annotations)
+                ?: DefaultInference.inferFieldMutability()
         }
-        require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
         if (field.modifiers.contains(Modifier.STATIC)) {
-            require(fieldMutability is Mutability.Immutable) { "Static field ${field.simpleName} must be immutable" }
+            require(fieldMutability == Mutability.IMMUTABLE) { "Static field ${field.simpleName} must be immutable" }
         }
         return fieldMutability
     }
@@ -218,14 +170,11 @@ class MemberTypeAnalysis(checker: BorroQChecker) {
             ?: throw IllegalStateException("Could not find field ${field.variables.single().nameAsString} in parent element $fqnParentName")
         val fieldMutability = fieldCache.getOrPut(fieldElement) {
             val annotations = field.annotations.annotationElements(importMap)
-            val fqTypeName = field.commonType.toClassOrInterfaceType().get().nameWithScope
-            val fieldTypeElement = elements.getTypeElement(fqTypeName)
-            Mutability.fromAnnotationsOnType(annotations, fieldTypeElement)
+            Mutability.fromAnnotations(annotations)
                 ?: throw IllegalStateException("No mutability for field $field specified")
         }
-        require(fieldMutability.onPaths == null) { "Field mutability annotation cannot be restricted on paths" }
         if (field.isStatic) {
-            require(fieldMutability is Mutability.Immutable) { "Static field $field must be immutable" }
+            require(fieldMutability == Mutability.IMMUTABLE) { "Static field $field must be immutable" }
         }
     }
 

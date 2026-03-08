@@ -1,19 +1,19 @@
 package de.mr_pine.borroq
 
+import de.mr_pine.borroq.analysis.Configuration
+import de.mr_pine.borroq.analysis.Configuration.Companion.getConfig
 import org.checkerframework.framework.source.SourceChecker
 import org.checkerframework.framework.source.SourceVisitor
 import org.checkerframework.framework.source.SupportedOptions
 
-@SupportedOptions(Strictness.KEY)
-class BorroQChecker: SourceChecker() {
+@SupportedOptions(Configuration.BorroQExtensions.KEY, Configuration.UnknownSyntaxStrictness.KEY)
+class BorroQChecker : SourceChecker() {
 
 
     override fun createSourceVisitor(): SourceVisitor<*, *> {
-        val strictness = getOption(Strictness.KEY, Strictness.DEFAULT).let(Strictness::fromString)
+        val configuration = getConfig()
         getTreePathCacher()
 
-        return BorroQVisitor(this, strictness)
+        return BorroQVisitor(this, configuration)
     }
-
-
 }

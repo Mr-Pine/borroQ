@@ -1,8 +1,21 @@
 package de.mr_pine.borroq.analysis.exceptions
 
 import de.mr_pine.borroq.Messages
-import de.mr_pine.borroq.types.VariablePermission
-import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.specifiers.ArgPermission
+import org.checkerframework.dataflow.cfg.node.Node
 
-class InsufficientShallowPermissionException(name: String, mutability: Mutability, permission: VariablePermission?): BorroQException(Messages.INSUFFICIENT_SHALLOW_PERMISSION, name, mutability.permissionString, permission?.toString() ?: "<primitive/String>") {
+class InsufficientShallowPermissionException(
+    name: String,
+    requiredPermission: ArgPermission
+) :
+    BorroQException(
+        Messages.INSUFFICIENT_SHALLOW_PERMISSION,
+        name,
+        requiredPermission.name
+    ) {
+
+    constructor(node: Node, requiredPermission: ArgPermission) : this(
+        node.toString(),
+        requiredPermission
+    )
 }

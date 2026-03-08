@@ -1,79 +1,26 @@
 package de.mr_pine.borroq.types
 
-import de.mr_pine.borroq.analysis.BorroQStore
-import de.mr_pine.borroq.analysis.exceptions.ConflictingPathRestrictionsException
-import org.checkerframework.dataflow.cfg.node.*
-import org.checkerframework.dataflow.expression.JavaExpression
-import org.checkerframework.dataflow.expression.LocalVariable
+import org.checkerframework.dataflow.cfg.node.ClassNameNode
 import javax.lang.model.element.VariableElement
 
 sealed interface PathRoot {
-    data object ThisPathRoot : PathRoot
-    data object StaticPathRoot : PathRoot
+    @JvmInline
+    value class StaticPathRoot(val className: ClassNameNode) : PathRoot
 
     @JvmInline
-    value class LocalVariableRoot(val variable: LocalVariable) : PathRoot
-
-    context(store: BorroQStore)
-    fun toId() = when (this) {
-        is ThisPathRoot -> (store.queryThisPermission() as IdentifiedPermission).id
-        is StaticPathRoot -> throw IllegalStateException("Static path root cannot be converted to id")
-        is LocalVariableRoot -> (store.queryPermission(variable) as IdentifiedPermission).id
-    }
+    value class IdPathRoot(val id: Id) : PathRoot
 }
 
 @JvmInline
 value class PathTail(val fields: List<VariableElement>) {
+    constructor(vararg fields: VariableElement) : this(fields.toList())
+
     fun isPrefixOf(other: PathTail) = fields.size <= other.fields.size && fields.zip(other.fields)
         .all { (a, b) -> a == b }
 
-    companion object {
-        fun checkForConflicts(paths: List<PathTail>) {
-            for ((i, path) in paths.withIndex()) {
-                val conflicting = paths.filterIndexed { index, _ -> index != i }.filter { path.isPrefixOf(it) }
-                if (conflicting.isNotEmpty()) throw ConflictingPathRestrictionsException(path, conflicting.first())
-            }
-        }
-    }
+    fun with(element: VariableElement) = PathTail(fields + element)
 }
 
 data class Path(val root: PathRoot, val tail: PathTail) {
     constructor(root: PathRoot) : this(root, PathTail(emptyList()))
-
-    context(store: BorroQStore)
-    fun asIdPath() = IdPath(root.toId(), tail)
-
-    fun with(field: VariableElement) = Path(root, PathTail(tail.fields + field))
-    fun with(tail: PathTail) = Path(root, PathTail(this.tail.fields + tail.fields))
-
-    val isStatic: Boolean get() = root is PathRoot.StaticPathRoot && tail.fields.size == 1 // TODO: Remove special case
-
-    companion object {
-        fun fromNode(node: Node): Path = when (node) {
-            is LocalVariableNode -> {
-                val variable = JavaExpression.fromNode(node) as LocalVariable
-                Path(PathRoot.LocalVariableRoot(variable))
-            }
-
-            is ThisNode -> Path(PathRoot.ThisPathRoot)
-            is FieldAccessNode -> {
-                val basePath = fromNode(node.receiver)
-                basePath.with(node.element)
-            }
-
-            is ClassNameNode -> Path(PathRoot.StaticPathRoot)
-
-            else -> throw IllegalStateException("Unexpected node type ${node.javaClass}")
-        }
-    }
-}
-
-data class IdPath(val id: Id, val tail: PathTail) {
-    constructor(id: Id) : this(id, PathTail(emptyList()))
-
-    fun isPrefixOf(other: IdPath) =
-        id == other.id && tail.isPrefixOf(other.tail)
-
-    fun with(field: VariableElement) = IdPath(id, PathTail(tail.fields + field))
-    fun with(tail: PathTail) = IdPath(id, PathTail(this.tail.fields + tail.fields))
 }

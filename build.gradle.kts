@@ -15,6 +15,8 @@ dependencies {
     implementation(libs.bundles.checker)
     implementation(libs.plumelib.util)
     implementation(kotlin("reflect"))
+    implementation(libs.logging)
+    implementation(libs.slf4j.api)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.eisop.test)

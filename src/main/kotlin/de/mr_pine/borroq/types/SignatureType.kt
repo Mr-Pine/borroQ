@@ -1,7 +1,7 @@
 package de.mr_pine.borroq.types
 
 import de.mr_pine.borroq.types.specifiers.Mutability
-import de.mr_pine.borroq.types.specifiers.ReleaseMode
+import de.mr_pine.borroq.types.specifiers.Scope
 
 /**
  * @param returnMutability The mutability of the return value. `null` if the return type is primitive/null
@@ -11,7 +11,6 @@ import de.mr_pine.borroq.types.specifiers.ReleaseMode
 data class SignatureType(
     val returnMutability: Mutability?, val receiverType: ParameterType?, val parameters: List<ParameterType?>
 ) {
-    data class ParameterType(val mutability: Mutability, val releaseMode: ReleaseMode) {
-    }
+    data class ParameterType(val mutability: Mutability, val scope: Scope)
 }
 

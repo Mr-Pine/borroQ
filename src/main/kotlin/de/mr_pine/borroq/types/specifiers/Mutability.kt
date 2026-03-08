@@ -1,28 +1,27 @@
 package de.mr_pine.borroq.types.specifiers
 
-import de.mr_pine.borroq.types.PathTail
+import de.mr_pine.borroq.types.Rational
 import org.checkerframework.javacutil.AnnotationUtils
 import javax.lang.model.element.AnnotationMirror
-import javax.lang.model.element.TypeElement
 
-sealed interface Mutability {
-    val permissionString: String
-    val onPaths: List<PathTail>?
+enum class Mutability {
+    MUTABLE,
+    IMMUTABLE;
 
-    fun checkForConflicts() {
-        PathTail.checkForConflicts(onPaths ?: emptyList())
-    }
+    val fraction: Rational
+        get() = when (this) {
+            MUTABLE -> Rational.ONE
+            IMMUTABLE -> Rational.HALF
+        }
 
-    data class Mutable(override val onPaths: List<PathTail>?) : Mutability {
-        override val permissionString = "mutable"
-    }
-
-    data class Immutable(override val onPaths: List<PathTail>?) : Mutability {
-        override val permissionString = "readable"
-    }
+    val permission: ArgPermission
+        get() = when (this) {
+            MUTABLE -> ArgPermission.MUTABLE
+            IMMUTABLE -> ArgPermission.READABLE
+        }
 
     companion object {
-        fun fromAnnotationsOnType(annotations: Collection<AnnotationMirror>, type: TypeElement?): Mutability? {
+        fun fromAnnotations(annotations: Collection<AnnotationMirror>): Mutability? {
             val mutableAnnotation =
                 AnnotationUtils.getAnnotationByClass(annotations, de.mr_pine.borroq.qual.mutability.Mutable::class.java)
             val immutableAnnotation = AnnotationUtils.getAnnotationByClass(
@@ -34,19 +33,14 @@ sealed interface Mutability {
                 throw IllegalStateException("Element is annotated with both @Mutable and @Immutable")
             }
 
-            val annotation = mutableAnnotation ?: immutableAnnotation ?: return null
-            val onPaths = pathsFromAnnotationValueOnType(annotation, type)
-
-            return if (mutableAnnotation != null) Mutable(onPaths)
-            else Immutable(onPaths)
-        }
-
-        fun lower(first: Mutability, second: Mutability): Mutability {
-            require(first.onPaths == null || second.onPaths == null) { "Can not get lower of restricted mutabilities: ($first, $second)" }
-            return when {
-                first is Mutable && second is Mutable -> Mutable(null)
-                else -> Immutable(null)
+            return if (mutableAnnotation != null) {
+                MUTABLE
+            } else if (immutableAnnotation != null) {
+                IMMUTABLE
+            } else {
+                null
             }
         }
+
     }
 }

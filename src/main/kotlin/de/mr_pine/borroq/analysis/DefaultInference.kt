@@ -1,35 +1,28 @@
 package de.mr_pine.borroq.analysis
 
 import de.mr_pine.borroq.types.BorroQValue
-import de.mr_pine.borroq.types.Rational
-import de.mr_pine.borroq.types.specifiers.Mutability
-import de.mr_pine.borroq.types.specifiers.Mutability.Immutable
-import de.mr_pine.borroq.types.specifiers.Mutability.Mutable
-import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Borrow
-import de.mr_pine.borroq.types.specifiers.ReleaseMode.SingleReleaseMode.Release
+import de.mr_pine.borroq.types.specifiers.Mutability.IMMUTABLE
+import de.mr_pine.borroq.types.specifiers.Mutability.MUTABLE
+import de.mr_pine.borroq.types.specifiers.Scope
+import javax.lang.model.type.TypeMirror
+import javax.lang.model.util.Elements
 
 object DefaultInference {
-    fun inferVariableMutability(assignedValue: BorroQValue): Mutability {
-        return when (assignedValue) {
-            is BorroQValue.FieldAccess if assignedValue.fieldPermission.fraction == Rational.ONE -> Mutable(
-                null
-            )
+    fun inferVariableMutability(assignedValue: BorroQValue) = IMMUTABLE
 
-            else -> Immutable(null)
-        }
-    }
+    fun inferFieldMutability() = IMMUTABLE
 
-    fun inferConstructorReturnMutability() = Mutable(null)
+    fun inferReceiverMutability() = IMMUTABLE
 
-    fun inferReceiverMutability() = Immutable(null)
-    fun inferReceiverReleaseMode() = Release(null)
+    fun inferReturnMutability(isConstructor: Boolean) = if (isConstructor) MUTABLE else IMMUTABLE
 
-    fun inferReturnMutability() = Immutable(null)
+    fun inferArrayElementMutability() = IMMUTABLE
 
-    fun inferArrayElementMutability() = Immutable(null)
+    fun inferParameterMutability(isConstructor: Boolean) = IMMUTABLE
 
-    fun inferParameterMutability(isConstructor: Boolean) = Immutable(null)
-    fun inferParameterReleaseMode(isConstructor: Boolean) = if (isConstructor) Borrow(null) else Release(null)
+    fun inferTypeParameterMutability() = IMMUTABLE
 
-    fun inferTypeParameterMutability() = Immutable(null)
+    fun inferFieldAccessMutability() = IMMUTABLE
+
+    fun inferDefaultScope(type: TypeMirror, elements: Elements) = Scope.full(type, elements)
 }

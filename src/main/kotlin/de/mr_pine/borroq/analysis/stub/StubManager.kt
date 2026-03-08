@@ -71,8 +71,6 @@ class StubManager(
                 }.jarFile.use { jarFile ->
                     for (entry in jarFile.stream().asSequence().sortedBy(Any::toString).filterNot(JarEntry::isDirectory)
                         .filter { it.name.startsWith("annotated-jdk") || it.name.endsWith(".java") }) {
-                        val fqn =
-                            entry.name.substringAfter("/share/classes/").substringBeforeLast(".java").replace("/", ".")
                         jarFile.getInputStream(entry).use {
                             parseStubFile(it)
                         }

@@ -8,15 +8,20 @@ import org.checkerframework.dataflow.qual.SideEffectFree;
 
 import java.util.List;
 
-/** A live variable transfer function. */
+/**
+ * A live variable transfer function.
+ */
 public class LiveVarTransfer
         extends AbstractNodeVisitor<
-                TransferResult<UnusedAbstractValue, LiveVarStore>,
-                TransferInput<UnusedAbstractValue, LiveVarStore>>
+        TransferResult<UnusedAbstractValue, LiveVarStore>,
+        TransferInput<UnusedAbstractValue, LiveVarStore>>
         implements BackwardTransferFunction<UnusedAbstractValue, LiveVarStore> {
 
-    /** Creates a new LiveVarTransfer. */
-    public LiveVarTransfer() {}
+    /**
+     * Creates a new LiveVarTransfer.
+     */
+    public LiveVarTransfer() {
+    }
 
     @Override
     @SideEffectFree
@@ -93,12 +98,16 @@ public class LiveVarTransfer
     /**
      * Update the information of live variables from an assignment statement.
      *
-     * @param variable the variable that should be killed
+     * @param target     the expression that is assigned to
      * @param expression the expression in which the variables should be added
-     * @param store the live variable store
+     * @param store      the live variable store
      */
-    private void processLiveVarInAssignment(Node variable, Node expression, LiveVarStore store) {
-        store.killLiveVar(new LiveVarNode(variable));
+    private void processLiveVarInAssignment(Node target, Node expression, LiveVarStore store) {
+        if (target instanceof LocalVariableNode variableNode) {
+            store.killLiveVar(new LiveVarNode(variableNode));
+        } else {
+            store.addUseInExpression(target);
+        }
         store.addUseInExpression(expression);
     }
 }

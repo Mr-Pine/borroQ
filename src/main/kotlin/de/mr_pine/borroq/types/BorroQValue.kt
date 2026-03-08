@@ -1,5 +1,6 @@
 package de.mr_pine.borroq.types
 
+import de.mr_pine.borroq.analysis.transfer.BorroQTransfer.Pseudoarg.BorrowTarget
 import org.checkerframework.dataflow.analysis.AbstractValue
 
 sealed interface BorroQValue : AbstractValue<BorroQValue> {
@@ -7,26 +8,17 @@ sealed interface BorroQValue : AbstractValue<BorroQValue> {
         TODO("Not yet implemented")
     }
 
-    val hasShallowMutability: Boolean
-        get() = false
-    val hasShallowReadability: Boolean
-        get() = false
+    data class FreePermission(val fraction: Rational, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
 
-    data class FreePermission(val permission: Permission, val attachedBorrows: List<FreeBorrow>) : BorroQValue {
-        override val hasShallowMutability: Boolean
-            get() = permission.fraction == Rational.ONE
-        override val hasShallowReadability: Boolean
-            get() = permission.fraction > Rational.ZERO
-
-        data class FreeBorrow(val path: IdPath, val fraction: Rational) {
-            fun toBorrow(id: Borrow.Identifier) = Borrow(path, fraction, id)
+        data class FreeBorrow(
+            val source: Path,
+            val fraction: Rational,
+            val targetType: BorrowTarget
+        ) {
+            fun toBorrow(id: Borrow.Identifier) = when (targetType) {
+                BorrowTarget.RETURN_VALUE -> Borrow(source, fraction, id)
+                BorrowTarget.PERSISTENT -> Borrow(source, fraction, Borrow.Identifier.Dummy)
+            }
         }
-    }
-
-    data class FieldAccess(val access: Path, val fieldPermission: Permission) : BorroQValue
-
-    data object Primitive : BorroQValue {
-        override val hasShallowMutability: Boolean get() = false
-        override val hasShallowReadability: Boolean get() = true
     }
 }

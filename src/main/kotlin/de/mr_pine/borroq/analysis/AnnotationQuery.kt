@@ -15,4 +15,8 @@ class AnnotationQuery(val checker: BorroQChecker) {
         is VariableTree -> getDeclaredVariableAnnotations(tree)
         else -> null
     }
+
+    fun getTypeMutability(tree: Tree): List<AnnotationMirror> {
+        return TreeUtils.typeOf(tree).annotationMirrors
+    }
 }

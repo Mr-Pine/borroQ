@@ -1,9 +1,8 @@
 package testcases.borroq;
 
+import de.mr_pine.borroq.qual.Scope;
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
-import de.mr_pine.borroq.qual.release.Release;
 
 public interface Fields {
     class A {
@@ -13,21 +12,21 @@ public interface Fields {
         B y;
 
         @Mutable
-        B getXMutable(@Mutable(".x") @Borrow(".x")A this) {
+        B getXMutable(@Mutable @Scope(".x")A this) {
             return this.x;
         }
 
-        static @Mutable B getXMutable2(@Mutable(".x") @Borrow(".x") A a) {
+        static @Mutable B getXMutable2(@Mutable @Scope(".x") A a) {
             return a.x;
         }
 
         @Immutable
-        B getX(@Immutable(".x") @Borrow(".x")A this) {
+        B getX(@Immutable @Scope(".x") A this) {
             return this.x;
         }
 
         @Immutable
-        B getY(@Immutable(".y") @Borrow(".y")A this) {
+        B getY(@Immutable @Scope(".y") A this) {
             return this.y;
         }
 
@@ -39,25 +38,19 @@ public interface Fields {
             this.y = y;
         }
 
-
-        void main(@Mutable @Release A this) {
-            @Mutable B b1 = this.getXMutable();
-            @Immutable B b2 = new B(1);
-            b1.mutable();
-            @Immutable A a2 = this;
-            @Immutable B b3 = a2.getX();
-            b3.immutable();
-            @Immutable B b4 = this.getY();
-            b4.immutable();
-        }
-
-        void mainDirect(@Mutable @Release A this) {
+        void mainDirect(@Mutable A this) {
             @Mutable B b1 = this.x;
             @Immutable B b2 = new B(1);
             b1.mutable();
+        }
+
+        void mainDirect2(@Mutable A this) {
             @Immutable A a2 = this;
             @Immutable B b3 = a2.x;
             b3.immutable();
+        }
+
+        void mainDirect3(@Mutable A this) {
             @Immutable B b4 = this.y;
             b4.immutable();
         }
@@ -71,11 +64,11 @@ public interface Fields {
             this.value = value;
         }
 
-        void mutable(@Mutable @Release B this) {
+        void mutable(@Mutable B this) {
             this.value = this.value + 1;
         }
 
-        void immutable(@Immutable @Release B this) {
+        void immutable(@Immutable B this) {
         }
     }
 }

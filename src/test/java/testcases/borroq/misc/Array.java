@@ -1,8 +1,7 @@
-package testcases.borroq.eval;
+package testcases.borroq.misc;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Move;
 
 public interface Array {
     class Box {
@@ -13,7 +12,7 @@ public interface Array {
         int value;
     }
 
-    default void use(@Immutable @Move Box value) {
+    default void use(@Immutable Box value) {
     }
 
     default void main() {
@@ -26,5 +25,14 @@ public interface Array {
 
         use(x);
         use(y);
+    }
+
+    default void write(Box @Mutable [] values) {
+        values[0] = new Box(1);
+    }
+
+    default void writeInv(Box @Immutable [] values) {
+        // :: error: permission.insufficient.shallow
+        values[0] = new Box(1);
     }
 }

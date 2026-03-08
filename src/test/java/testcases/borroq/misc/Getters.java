@@ -1,9 +1,8 @@
-package testcases.borroq.eval;
+package testcases.borroq.misc;
 
+import de.mr_pine.borroq.qual.Scope;
 import de.mr_pine.borroq.qual.mutability.Immutable;
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
-import de.mr_pine.borroq.qual.release.Release;
 
 public interface Getters {
     class BoxA {
@@ -23,7 +22,7 @@ public interface Getters {
     }
 
     class X {
-        X(@Mutable @Borrow BoxA a, @Mutable @Borrow BoxB b) {
+        X(@Mutable BoxA a, @Mutable BoxB b) {
             this.a = a;
             this.b = b;
         }
@@ -33,16 +32,16 @@ public interface Getters {
         @Mutable
         BoxB b;
 
-        public @Mutable BoxA getA(@Mutable("a") @Borrow("a")X this) {
+        public @Mutable BoxA getA(@Mutable @Scope("a") X this) {
             return a;
         }
 
-        public @Mutable BoxB getB(@Mutable("b") @Borrow("b")X this) {
+        public @Mutable BoxB getB(@Mutable @Scope("b") X this) {
             return b;
         }
     }
 
-    default void use(@Immutable @Release Object o) {
+    default void use(@Immutable Object o) {
     }
 
     default void main() {

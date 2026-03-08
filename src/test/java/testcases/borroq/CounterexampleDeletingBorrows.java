@@ -1,7 +1,6 @@
 package testcases.borroq;
 
 import de.mr_pine.borroq.qual.mutability.Mutable;
-import de.mr_pine.borroq.qual.release.Borrow;
 
 public class CounterexampleDeletingBorrows {
     static class Box {
@@ -11,13 +10,13 @@ public class CounterexampleDeletingBorrows {
         int value;
     }
     static class B {
-        B(@Mutable @Borrow Box x) {
+        B(@Mutable Box x) {
             this.x = x;
         }
         @Mutable Box x;
     }
     static class A {
-        A(@Mutable @Borrow B b) {
+        A(@Mutable B b) {
             this.b = b;
         }
 
@@ -32,9 +31,9 @@ public class CounterexampleDeletingBorrows {
         B extracted = a.b;
         Box extractedBox = extracted.x;
 
-        // :: error: permission.insufficient.shallow.borrowed
         Box differentExtractedBox = a.b.x;
 
+        // :: error: permission.insufficient.shallow
         extractedBox.value = 1;
 
         int val = differentExtractedBox.value;

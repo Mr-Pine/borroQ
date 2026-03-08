@@ -1,8 +1,8 @@
 package de.mr_pine.borroq.analysis.exceptions
 
 import de.mr_pine.borroq.Messages
-import de.mr_pine.borroq.types.Path
-import de.mr_pine.borroq.types.specifiers.Mutability
+import de.mr_pine.borroq.types.PathTail
+import de.mr_pine.borroq.types.specifiers.ArgPermission
 
-class InsufficientDeepPermissionException(variableAccess: Path, mutability: Mutability): BorroQException(Messages.INSUFFICIENT_DEEP_PERMISSION, variableAccess.display(), mutability.permissionString) {
-}
+class InsufficientDeepPermissionException(path: PathTail, requiredPermission: ArgPermission) :
+    BorroQException(Messages.INSUFFICIENT_DEEP_PERMISSION, path.display(), requiredPermission.name)
