@@ -20,9 +20,7 @@ public interface ArrayMut {
         Box box2 = new Box(2);
         @Mutable Box [] values = new @Mutable Box[]{box0, box1, box2};
         @Mutable Box x = values[0];
-        @Mutable Box y = values[1];
 
         drop(x);
-        drop(y);
     }
 }
