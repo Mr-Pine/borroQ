@@ -463,6 +463,7 @@ class BorroQTransfer(
         return when (val target = node.target) {
             is LocalVariableNode -> visitLocalVariableAssignment(node, target, input)
             is FieldAccessNode -> visitFieldAssignment(node, target, input)
+            is ArrayAccessNode -> visitArrayAssignment(node, target, input)
             else -> visitNode(node, input)
         }
     }
@@ -689,6 +690,35 @@ class BorroQTransfer(
             node.index
         )
         val pseudocall = Pseudocall(componentMutability, listOf(arrayPseudoarg, indexPseudoarg))
+
+        return context(input.regularStore, node.tree!!, node) {
+            processPseudocall(pseudocall, input)
+        }
+    }
+
+    private fun visitArrayAssignment(node: AssignmentNode, target: ArrayAccessNode, input: Input): Result {
+        configuration.borroQExtensions.requireExtension(Extension.ARRAYS, node, checker)
+
+        val componentType = target.array.annotatedType.let { it as ArrayType }.componentType
+        val arrayScope = Scope(false, listOf(PathTail(listOf(ArrayValuesVirtualField(componentType)))))
+        val arrayPseudoarg = Pseudoarg(
+            Mutability.MUTABLE,
+            arrayScope,
+            Pseudoarg.BorrowTarget.RETURN_VALUE,
+            input.getValueOfSubNode(target.array)!!,
+            target.array
+        )
+
+        val valuePseudoarg = Pseudoarg(
+            Mutability.fromAnnotations(componentType.annotationMirrors)
+                ?: DefaultInference.inferTypeParameterMutability(),
+            Scope.full(node.expression.type, checker.elementUtils),
+            Pseudoarg.BorrowTarget.PERSISTENT,
+            input.getValueOfSubNode(node.expression)!!,
+            node.expression
+        )
+
+        val pseudocall = Pseudocall(Mutability.IMMUTABLE, listOf(arrayPseudoarg, valuePseudoarg))
 
         return context(input.regularStore, node.tree!!, node) {
             processPseudocall(pseudocall, input)
