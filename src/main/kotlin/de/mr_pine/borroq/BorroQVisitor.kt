@@ -6,6 +6,7 @@ import com.sun.source.tree.ClassTree
 import com.sun.source.tree.MethodTree
 import com.sun.tools.javac.tree.JCTree
 import de.mr_pine.borroq.analysis.*
+import de.mr_pine.borroq.analysis.Configuration.BorroQExtensions.Extension
 import de.mr_pine.borroq.analysis.exceptions.BorroQException
 import de.mr_pine.borroq.analysis.livevariable.LiveVarTransfer
 import de.mr_pine.borroq.analysis.transfer.BorroQTransfer
@@ -19,7 +20,9 @@ import org.checkerframework.framework.source.SourceVisitor
 import org.checkerframework.javacutil.UserError
 
 class BorroQVisitor(
-    val checker: BorroQChecker, val configuration: Configuration, val annotationQuery: AnnotationQuery = AnnotationQuery(
+    val checker: BorroQChecker,
+    val configuration: Configuration,
+    val annotationQuery: AnnotationQuery = AnnotationQuery(
         checker
     )
 ) : SourceVisitor<Unit, Unit>(checker) {
@@ -47,6 +50,11 @@ class BorroQVisitor(
         val livenessResult = livenessAnalysis.result
 
         val methodElement = (tree as JCTree.JCMethodDecl).sym
+
+        if (methodElement.isConstructor) {
+            configuration.borroQExtensions.requireExtension(Extension.CONSTRUCTORS, tree, checker)
+        }
+
         val memberTypeAnalysis = MemberTypeAnalysis(checker)
         val signatureType = memberTypeAnalysis.getType(methodElement, exceptionReportingContext = {
             try {

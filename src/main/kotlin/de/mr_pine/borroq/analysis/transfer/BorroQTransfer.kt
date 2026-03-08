@@ -241,6 +241,16 @@ class BorroQTransfer(
         pseudocall: Pseudocall, input: Input
     ): RegularTransferResult<BorroQValue, BorroQStore> {
 
+        for (pseudoarg in pseudocall.arguments) {
+            if (pseudoarg.node !is LocalVariableNode) {
+                configuration.borroQExtensions.requireExtension(
+                    Extension.NON_VARIABLE_ARGUMENTS,
+                    pseudoarg.node.tree ?: node.tree!!,
+                    checker
+                )
+            }
+        }
+
         val attachedBorrows = buildList {
             for (pseudoarg in pseudocall.arguments) {
                 addAll(processPseudoarg(pseudoarg, input, this))

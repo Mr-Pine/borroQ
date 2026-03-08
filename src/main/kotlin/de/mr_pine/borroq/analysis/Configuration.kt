@@ -56,6 +56,7 @@ data class Configuration(
             NESTED_FIELD_ACCESS("Accessing nested fields in code and in scopes"),
             VOID_RETURN("Treat void return types identically as returning bool"),
             NO_OUT_OF_SCOPE_ASSIGNMENT("Disallow assigning fields that are out of scope for a method"),
+            CONSTRUCTORS("Enable constructors"),
             NON_VARIABLE_ARGUMENTS("Allow arbitrary nested field accesses only local variables as arguments, return values, lhs of assignments, rhs of assignments"),
             ;
         }
