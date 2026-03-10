@@ -36,4 +36,14 @@ public interface ConstructorPerms {
         System.out.println(x);
         System.out.println(b);
     }
+
+    class C {
+        @Mutable A a;
+
+        // :: error: permission.insufficient.deep
+        @Mutable C() {
+            this.a = new A();
+            System.out.println(a);
+        }
+    }
 }

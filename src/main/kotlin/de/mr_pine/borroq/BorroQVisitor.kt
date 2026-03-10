@@ -77,7 +77,8 @@ class BorroQVisitor(
 
         val analysis = MethodAnalysis(
             -1,
-            transfer
+            transfer,
+            methodElement
         )
         analysis.performAnalysis(cfg)
 

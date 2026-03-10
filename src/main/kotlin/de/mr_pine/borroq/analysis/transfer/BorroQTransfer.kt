@@ -148,6 +148,36 @@ class BorroQTransfer(
         )
     }
 
+    fun validateConstructorExit(store: BorroQStore, returnType: TypeMirror, tree: Tree) {
+        val permission = signatureType.returnMutability!!.permission
+        val thisValue = store.queryThisPermission()!!
+
+        val dummyNode = object : Node(returnType) {
+            override fun getTree() = tree
+
+            override fun <R : Any?, P : Any?> accept(
+                p0: NodeVisitor<R?, P?>?,
+                p1: P?
+            ): R? {
+                throw IllegalStateException("Dummy node should not be visited")
+            }
+
+            override fun getOperands(): Collection<Node?> = emptySet()
+
+            override fun toString() = "<constructed object>"
+        }
+        silentExceptionReportContext(tree) {
+            store.ensurePermissionOn(
+                permission,
+                thisValue,
+                dummyNode,
+                Scope.full(returnType, checker.elementUtils),
+                memberTypeAnalysis,
+                emptyList()
+            )
+        }
+    }
+
     data class Pseudoarg(
         val mutability: Mutability,
         val scope: Scope,

@@ -183,7 +183,7 @@ data class BorroQStore(
         }
         for (scopeTail in scope.entries) {
             if (!check(id, scopeTail, memberTypeAnalysis, freeBorrows)) {
-                throw InsufficientDeepPermissionException(scopeTail, permission)
+                throw InsufficientDeepPermissionException(scopeTail, node, permission)
             }
         }
     }
