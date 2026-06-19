@@ -34,6 +34,12 @@ tasks.compileJava {
     options.compilerArgs.add("-Xlint:all")
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
 tasks.test {
     layout.buildDirectory.dir("cfgraphs").get().asFile.mkdirs()
 
