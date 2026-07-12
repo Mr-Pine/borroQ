@@ -91,7 +91,9 @@ class BorroQTransfer(
     override fun initialStore(
         underlyingAST: UnderlyingAST, parameters: List<LocalVariableNode>
     ): BorroQStore {
-        parameterIds = parameters.associateWith { Id.fromNode(it) }
+        parameterIds = parameters.associateWith {
+            BorroQStore.createFreshId(it)
+        }
 
         if (parameters.size != 2) {
             configuration.borroQExtensions.requireExtension(
@@ -380,8 +382,7 @@ class BorroQTransfer(
 
                 val newFraction = targetMutability?.fraction ?: rhsValue.fraction
 
-                val store = input.regularStore
-                val targetId = store.createFreshId(target)
+                val targetId = BorroQStore.createFreshId(target)
 
                 val targetPermission = IdentifiedPermission(newFraction, targetId)
                 val borrows = rhsValue.attachedBorrows.map { it.toBorrow(targetId) }
@@ -767,7 +768,7 @@ class BorroQTransfer(
 // endregion array stuff
 
     companion object {
-        val ThisId = Id("this")
+        val ThisId = Id("this", -1)
     }
 
     override fun visitTypeCast(

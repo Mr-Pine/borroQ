@@ -42,13 +42,6 @@ data class BorroQStore(
         checker, configuration, variablePermissions.toMutableMap(), thisPermission, borrowList.toMutableList()
     )
 
-    fun createFreshId(variableNode: LocalVariableNode): Id {
-        val name = variableNode.name.toString()
-        val nonce = variableNode.tree.hashCode()
-
-        return Id(name, nonce)
-    }
-
     fun updatePermission(target: Node, permission: VariablePermission) {
         when (val expression = JavaExpression.fromNode(target)) {
             is LocalVariable -> {
@@ -295,6 +288,14 @@ data class BorroQStore(
     }
 
     companion object {
+
+        fun createFreshId(variableNode: LocalVariableNode): Id {
+            val name = variableNode.name.toString()
+            val nonce = variableNode.tree.hashCode()
+
+            return Id(name, nonce)
+        }
+
         data class ArrayValuesVirtualField(val type: TypeMirror) : VariableElement {
             override fun asType() = type
 
