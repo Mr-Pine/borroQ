@@ -67,3 +67,28 @@ Object-Oriented Programs",
   reusable-claim(i + 1, name, body)
   linebreak()
 }
+
+= Quick Start
+
+== Setup Validation
+
+To confirm the artefact and environment are set up correctly, we recommend running the unit tests.
+
+As this project uses gradle, this can be done with `./gradlew test`. We also provide a docker image that contains a working gradle installation and the source code. To use it, replace `./gradlew` in all commands with `docker run --rm -it <docker image identifier>` #text(red)[Tag/hash/idk?].
+
+If the environment is operational, all tests should succeed.
+
+== Directory Structure
+
+#text(red)[TODO: Figure]
+
+The directory structure is standard for a gradle project. `src/main/kotlin/de/mr_pine/borroq` contains the source code of the checker, `src/main/java/de/mr_pine/borroq` contains vendored and fixed code from the checker framework.
+
+`src/test` contains the unit tests, with `src/test/kotlin` having the test runners and `src/test/java` containing the source files that the checker is run on.
+
+
+
+
+= Functional Evaluation
+
+
