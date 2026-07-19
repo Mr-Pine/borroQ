@@ -1,4 +1,5 @@
 #import "@preview/basic-report:0.5.0": *
+#import "directories.typ": dir, dir-listing, mydir, vdots
 
 #show: it => basic-report(
   doc-category: "Artefact Evaluation Instructions",
@@ -45,7 +46,7 @@ Object-Oriented Programs",
   ([Flexible Argument Extension], [We can use return values directly as arguments]),
   ([Array Extension], [We can use arrays]),
   ([Control-Flow Extension], [We can use while loops]),
-  ([Extension Disabling], [Disabling the type system extensions forbids the use of non-formalized language features])
+  ([Extension Disabling], [Disabling the type system extensions forbids the use of non-formalized language features]),
 )
 
 #for (i, (name, body)) in func-claims.enumerate() {
@@ -80,13 +81,37 @@ If the environment is operational, all tests should succeed.
 
 == Directory Structure
 
-#text(red)[TODO: Figure]
-
-The directory structure is standard for a gradle project. `src/main/kotlin/de/mr_pine/borroq` contains the source code of the checker, `src/main/java/de/mr_pine/borroq` contains vendored and fixed code from the checker framework.
-
-`src/test` contains the unit tests, with `src/test/kotlin` having the test runners and `src/test/java` containing the source files that the checker is run on.
-
-
+#figure(caption: [Directory structure of BorroQ])[
+  #dir-listing(
+    pad: 6pt,
+    line-y: 60%,
+    dir(
+      `borroq/`,
+      mydir(
+        `src/`,
+        none,
+        mydir(
+          `main/`,
+          [Type checker source files],
+          mydir(`java`, [Vendored files from checker framework]),
+          mydir(`kotlin`, [Main source files]),
+        ),
+        mydir(
+          `test/`,
+          [Unit test files],
+          mydir(`kotlin`, [Test runners]),
+          mydir(`java`, [Files the checker runs on]),
+        ),
+      ),
+      dir(`gradle/`, mydir(`libs.versions.toml`, [Dependency Configuration]), mydir(
+        `wrapper/`,
+        [Gradle Wrapper Files],
+      )),
+      mydir(`*.gradle.kts`, [Gradle Configuration Files]),
+      mydir(vdots, [Other files and directories, ignore])
+    ),
+  )
+]
 
 
 = Functional Evaluation
