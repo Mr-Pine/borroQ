@@ -27,12 +27,13 @@ class BorroQVisitor(
     )
 ) : SourceVisitor<Unit, Unit>(checker) {
 
-    var currentClass: ClassTree? = null
+    var currentClassStack: ArrayDeque<ClassTree> = ArrayDeque()
     val cfgVisualizer = createCFGVisualizer()
 
     override fun visitClass(classTree: ClassTree?, p: Unit?) {
-        currentClass = classTree
-        return super.visitClass(classTree, p)
+        currentClassStack.addFirst(classTree!!)
+        super.visitClass(classTree, p)
+        currentClassStack.removeFirst()
     }
 
     override fun visitMethod(tree: MethodTree, p: Unit?) {
@@ -41,7 +42,7 @@ class BorroQVisitor(
         val cfg = CFGBuilder.build(
             root ?: throw IllegalStateException("No root tree present"),
             tree,
-            currentClass ?: throw IllegalStateException("No current class available"),
+            currentClassStack.firstOrNull() ?: throw IllegalStateException("No current class available"),
             checker.processingEnvironment
         )
 
