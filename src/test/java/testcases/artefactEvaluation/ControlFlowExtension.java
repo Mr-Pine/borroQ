@@ -1,8 +1,8 @@
-package testcases.borroq;
+package testcases.artefactEvaluation;
 
 import de.mr_pine.borroq.qual.mutability.Immutable;
 
-public class Loop {
+public class ControlFlowExtension {
     void drop_immut(@Immutable Object o) {
 
     }

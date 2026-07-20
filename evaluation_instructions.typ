@@ -23,8 +23,9 @@ Object-Oriented Programs",
   label("claim_" + prefix + "_" + str(n))
 }
 
-#let claim(base, prefix, n, name, content) = [
-  #claim-marker(base, n) #claim-label(prefix, n) _#name;_: #content
+#let claim(base, prefix, v) = [
+  #let (key, (i, (name, body))) = v
+  #claim-marker(base, i) #claim-label(prefix, i) _#name;_: #body
 ]
 #let claim-ref(base, prefix, n) = {
   link(claim-label(prefix, n), claim-marker(base, n))
@@ -36,24 +37,33 @@ Object-Oriented Programs",
 #let func-ref = claim-ref.with("F", "fun")
 
 #let func-claims = (
-  ([Immutability], [Fields on an immutable parameter cannot be reassigned.]),
-  ([Mutability], [Fields on a mutable parameter can be reassigned.]),
-  ([Immutable Return], [On the return value of a method with an immutable return type, fields cannot be reassigned]),
-  ([Aliasing Detection], [On an aliased object, fields cannot be reassigned]),
-  ([Deep field access], [A local variable assigned from a field on an immutable object behaves immutably]),
-  ([Mutable Arguments], [An immutable parameter cannot be used as a mutable argument]),
-  ([Recombination], [We can recombine fractional permissions once the alias is not used anymore]),
-  ([Flexible Argument Extension], [We can use return values directly as arguments]),
-  ([Array Extension], [We can use arrays]),
-  ([Control-Flow Extension], [We can use while loops]),
-  ([Extension Disabling], [Disabling the type system extensions forbids the use of non-formalized language features]),
+  immutability: ([Immutability], [Fields on an immutable parameter cannot be reassigned.]),
+  mutability: ([Mutability], [Fields on a mutable parameter can be reassigned.]),
+  immut-return: (
+    [Immutable Return],
+    [On the return value of a method with an immutable return type, fields cannot be reassigned],
+  ),
+  alia-detection: ([Aliasing Detection], [On an aliased object, fields cannot be reassigned]),
+  deep-field: ([Deep field access], [A local variable assigned from a field on an immutable object behaves immutably]),
+  mut-arg: ([Mutable Arguments], [An immutable parameter cannot be used as a mutable argument]),
+  borrowed-arg: ([Borrowed Arguments], [An parameter with an aliased field cannot be used as a mutable argument]),
+  recomb: ([Recombination], [We can recombine fractional permissions once the alias is not used anymore]),
+  flex-arg: ([Flexible Argument Extension], [We can use return values directly as arguments]),
+  arr-ext: ([Array Extension], [We can use arrays]),
+  cf-ext: ([Control-Flow Extension], [We can use while loops]),
+  ext-switch: (
+    [Extension Disabling],
+    [Disabling the type system extensions forbids the use of non-formalized language features],
+  ),
 )
 
-#for (i, (name, body)) in func-claims.enumerate() {
-  functional-claim(i + 1, name, body)
+
+#let func-claims = func-claims.pairs().enumerate().map(x => (x.at(1).at(0), (x.at(0) + 1, x.at(1).at(1)))).to-dict()
+
+#for x in func-claims.pairs() {
+  functional-claim(x)
   linebreak()
 }
-
 
 == Reusability Claims
 
@@ -61,11 +71,12 @@ Object-Oriented Programs",
 #let reuse-ref = claim-ref.with("R", "reuse")
 
 #let reuse-claims = (
-  ([Using the typechecker], [Our typechecker can be used as a annotation process]),
+  annot-proc: ([Using the typechecker], [Our typechecker can be used as a annotation processor]),
 )
+#let reuse-claims = reuse-claims.pairs().enumerate().map(x => (x.at(1).at(0), (x.at(0) + 1, x.at(1).at(1)))).to-dict()
 
-#for (i, (name, body)) in reuse-claims.enumerate() {
-  reusable-claim(i + 1, name, body)
+#for x in reuse-claims.pairs() {
+  reusable-claim(x)
   linebreak()
 }
 
@@ -108,7 +119,7 @@ If the environment is operational, all tests should succeed.
         [Gradle Wrapper Files],
       )),
       mydir(`*.gradle.kts`, [Gradle Configuration Files]),
-      mydir(vdots, [Other files and directories, ignore])
+      mydir(vdots, [Other files and directories, ignore]),
     ),
   )
 ]
@@ -116,4 +127,39 @@ If the environment is operational, all tests should succeed.
 
 = Functional Evaluation
 
+We show the functional claims using unit tests. For claims that detect a violation or disallow something, the tests verify that the type checker throws an error via `// :: error: <error key>` comments.
 
+The test cases can be run individually using `./gradlew test --tests <Test name>` (or with the equivalent docker command) but are also all covered by `./gradlew test`.
+
+#figure(caption: [Corresponding test cases for functional claims], {
+  let test-case-mapping = (
+    immutability: ("Immutability", none),
+    mutability: ("Mutability", none),
+    immut-return: ("ImmutableReturn", none),
+    alia-detection: ("AliasDetection", none),
+    deep-field: ("DeepField", none),
+    mut-arg: ("MutableArguments", none),
+    borrowed-arg: ("BorrowedArguments", none),
+    recomb: ("Recombination", none),
+    flex-arg: ("FlexibleArgumentExtension", none),
+    arr-ext: ("ArrayExtension", none),
+    cf-ext: ("ControlFlowExtension", none),
+    ext-switch: ("ExtensionDisabling", [This test adds an additional config option to forbid all extensions]),
+  )
+
+  let cells = test-case-mapping
+    .pairs()
+    .map(x => {
+      let (key, (test-name, comment)) = x
+      let claim-number = func-claims.at(key).at(0)
+      let test-name = raw(test-name + "Test")
+      let comment = if comment == none [] else {comment}
+      (table.cell(func-ref(claim-number)), table.cell(align: left, test-name), table.cell(comment))
+    })
+    .flatten()
+
+  table(
+    columns: 3,
+    ..cells
+  )
+})
