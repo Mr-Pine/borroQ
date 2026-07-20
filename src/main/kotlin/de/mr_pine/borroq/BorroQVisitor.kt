@@ -56,6 +56,8 @@ class BorroQVisitor(
             configuration.borroQExtensions.requireExtension(Extension.CONSTRUCTORS, tree, checker)
         }
 
+        ControlFlowExtensionVisitor(checker).apply { setRoot(this@BorroQVisitor.root) }.visit(currentPath)
+
         val memberTypeAnalysis = MemberTypeAnalysis(checker)
         val signatureType = memberTypeAnalysis.getType(methodElement, exceptionReportingContext = {
             try {
@@ -85,7 +87,6 @@ class BorroQVisitor(
 
         visualizeCFG(cfg, analysis)
     }
-
 
     fun visualizeCFG(cfg: ControlFlowGraph, analysis: MethodAnalysis) {
         cfgVisualizer?.visualizeWithAction(cfg, cfg.entryBlock, analysis)

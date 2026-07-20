@@ -58,6 +58,7 @@ data class Configuration(
             NO_OUT_OF_SCOPE_ASSIGNMENT("Disallow assigning fields that are out of scope for a method"),
             CONSTRUCTORS("Enable constructors"),
             NON_VARIABLE_ARGUMENTS("Allow arbitrary nested field accesses only local variables as arguments, return values, lhs of assignments, rhs of assignments"),
+            CONTROL_FLOW("Arbitrary control flow, supported by CF Dataflow")
             ;
         }
 
