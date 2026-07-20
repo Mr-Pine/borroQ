@@ -581,16 +581,19 @@ class BorroQTransfer(
         require(!input.containsTwoStores()) { "Field access node $node has two stores" }
 
         val (base, pathTail) = extractFieldPath(node)
-
+        val fieldMutability = Mutability.fromAnnotations(node.element.asType().annotationMirrors)
         val targetMutability = inferFieldAccessMutability(node)
+
+        val possibleTargetMutability = fieldMutability?.min(targetMutability) ?: targetMutability
+
         val receiverArg = Pseudoarg(
-            targetMutability,
+            possibleTargetMutability,
             Scope(false, listOf(pathTail)),
             Pseudoarg.BorrowTarget.RETURN_VALUE,
             input.getValueOfSubNode(base)!!,
             base
         )
-        val pseudocall = Pseudocall(targetMutability, listOf(receiverArg))
+        val pseudocall = Pseudocall(possibleTargetMutability, listOf(receiverArg))
 
         return context(input.regularStore, node.tree!!, node) {
             processPseudocall(pseudocall, input)

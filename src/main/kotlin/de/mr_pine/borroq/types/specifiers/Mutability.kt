@@ -43,4 +43,11 @@ enum class Mutability {
         }
 
     }
+
+    fun min(other: Mutability) = if (this == IMMUTABLE || other == IMMUTABLE) {
+        IMMUTABLE
+    } else {
+        assert(this == MUTABLE && other == MUTABLE)
+        MUTABLE
+    }
 }
