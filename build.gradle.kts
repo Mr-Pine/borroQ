@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "de.mr-pine"
-version = "1.0-SNAPSHOT"
+version = "1.0"
 
 repositories {
     mavenCentral()
@@ -80,4 +80,36 @@ sourceSets {
             srcDirs("src/main/java")
         }
     }
+}
+
+tasks.register<Exec>("dockerBuildAndSave") {
+    group = "docker"
+    description = "Builds a Docker image and saves it to a tar file"
+
+    val imageName = "borroq:latest"
+    val outputFile = layout.buildDirectory.file("build/borroq.image")
+
+    doFirst {
+        outputFile.get().asFile.parentFile.mkdirs()
+    }
+
+    // Build the image
+    commandLine("docker", "build", "-t", imageName, ".")
+
+    doLast {
+        commandLine("docker", "save", "-o", outputFile.get().asFile.absolutePath, imageName)
+    }
+}
+
+tasks.register<Exec>("buildExampleProject") {
+    group = "build"
+    description = "Runs ./gradlew build in another project directory"
+
+    val targetDir = file("src/test/resources/example-project")
+
+    workingDir = targetDir
+    commandLine(
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) "gradlew.bat" else "./gradlew",
+        "build"
+    )
 }
