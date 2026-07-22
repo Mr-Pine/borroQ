@@ -15,6 +15,7 @@ import de.mr_pine.borroq.analysis.livevariable.LiveVarStore
 import de.mr_pine.borroq.isConstructor
 import de.mr_pine.borroq.types.*
 import de.mr_pine.borroq.types.BorroQValue.FreePermission.FreeBorrow
+import de.mr_pine.borroq.types.specifiers.ArgPermission
 import de.mr_pine.borroq.types.specifiers.Mutability
 import de.mr_pine.borroq.types.specifiers.Scope
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -433,6 +434,11 @@ class BorroQTransfer(
 
     fun visitFieldAssignment(node: AssignmentNode, target: FieldAccessNode, input: Input): Result {
         val (base, path) = extractFieldPath(target)
+        if (path.fields.dropLast(1)
+                .any { field -> memberTypeAnalysis.getFieldMutability(field) != Mutability.MUTABLE }
+        ) silentExceptionReportContext(target.tree!!) {
+            throw InsufficientShallowPermissionException(target, ArgPermission.MUTABLE)
+        }
         val receiverId =
             input.getValueOfSubNode(base)?.let { it as? IdentifiedPermission }?.id ?: ThisId.takeIf { base is ThisNode }
         if (receiverId != null) {
