@@ -2,10 +2,9 @@ package testcases.artefactEvaluation;
 
 import de.mr_pine.borroq.qual.mutability.*;
 
-public class BorrowedArguments {
+public class FieldAliasDetection {
     class A {
-        @Mutable
-        B b;
+        @Mutable B b;
     }
 
     class B {
@@ -13,13 +12,9 @@ public class BorrowedArguments {
     }
 
     void main(@Mutable A a) {
-        @Mutable B b = a.b;
+        B b = a.b;
         // :: error: permission.insufficient.deep
-        foo(a);
-        System.out.println(b.xy);
-    }
-
-    void foo(@Mutable A a) {
         a.b.xy = "Hello, World!";
+        System.out.println(b.xy);
     }
 }

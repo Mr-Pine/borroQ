@@ -1,4 +1,4 @@
-package testcases.artefactEvaluation;
+package testcases.borroq;
 
 import de.mr_pine.borroq.qual.mutability.*;
 
