@@ -18,6 +18,11 @@ Object-Oriented Programs",
 
 = Badge Claims
 
+We claim two badges:
++ Artefacts Available
++ Artefacts (Functional and) Reusable
+The reasons why our tool fulfils the requirements set out by the EAPLS scheme for are outlined below.
+
 #let claim-marker(base, n) = {
   $sans(#base)_#n$
 }
