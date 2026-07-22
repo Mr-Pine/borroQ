@@ -82,34 +82,24 @@ sourceSets {
     }
 }
 
-tasks.register<Exec>("dockerBuildAndSave") {
-    group = "docker"
-    description = "Builds a Docker image and saves it to a tar file"
+val dockerTag = "borroq:latest"
 
-    val imageName = "borroq:latest"
-    val outputFile = layout.buildDirectory.file("build/borroq.image")
+val build = tasks.register<Exec>("dockerBuild") {
+    group = "docker"
+    description = "Builds a Docker image"
+    commandLine("docker", "build", "-t", dockerTag, ".")
+}
+
+val save = tasks.register<Exec>("dockerSave") {
+    group = "docker"
+    description = "Saves a Docker image to a tar file"
+    dependsOn(build)
+
+    val outputFile = layout.buildDirectory.file("borroq.image")
 
     doFirst {
         outputFile.get().asFile.parentFile.mkdirs()
     }
 
-    // Build the image
-    commandLine("docker", "build", "-t", imageName, ".")
-
-    doLast {
-        commandLine("docker", "save", "-o", outputFile.get().asFile.absolutePath, imageName)
-    }
-}
-
-tasks.register<Exec>("buildExampleProject") {
-    group = "build"
-    description = "Runs ./gradlew build in another project directory"
-
-    val targetDir = file("src/test/resources/example-project")
-
-    workingDir = targetDir
-    commandLine(
-        if (org.gradle.internal.os.OperatingSystem.current().isWindows) "gradlew.bat" else "./gradlew",
-        "build"
-    )
+    commandLine("docker", "save", "-o", outputFile.get().asFile.path, dockerTag)
 }
